@@ -683,6 +683,26 @@ struct value_t
 
     void format(std::ostream& os, format_mode_t mode) const
     {
+        static const auto fmt_char = [](std::ostream& o, character_t ch)
+        {
+            o << "\\";
+            if (ch == ' ')
+            {
+                o << "space";
+            }
+            else if (ch == '\n')
+            {
+                o << "newline";
+            }
+            else if (ch == '\t')
+            {
+                o << "tab";
+            }
+            else
+            {
+                o << ch;
+            }
+        };
         switch (m_type)
         {
             case type_t::nil: m_nil.format(os, mode); return;
@@ -690,7 +710,7 @@ struct value_t
             case type_t::integer: os << m_integer; return;
             case type_t::floating_point: os << m_floating_point; return;
             case type_t::string: m_string.format(os, mode); return;
-            case type_t::character: os << '\\' << m_character; return;
+            case type_t::character: fmt_char(os, m_character); return;
             case type_t::symbol: os << m_symbol; return;
             case type_t::keyword: m_keyword.format(os, mode); return;
             case type_t::tagged_element: m_tagged_element.format(os, mode); return;
@@ -826,11 +846,7 @@ struct tokenize_fn
         {
             return {};
         }
-        if (text.size() >= 2 && text.slice({}, 2) == string_view{ "#{" })
-        {
-            return std::tuple{ std::string(text.slice({}, 2)), text.slice(2, {}) };
-        }
-        if (is_parenthesis(text[0]))
+        if (text[0] == '#' || is_parenthesis(text[0]))
         {
             return std::tuple{ std::string(1, text[0]), text.slice(1, {}) };
         }
@@ -858,6 +874,7 @@ struct tokenize_fn
         {
             return tokenizer_result_t{ token_t{ std::move(text) }, string_view{} };
         }
+        return {};
     }
 
     auto operator()(string_view text) const -> std::vector<token_t>
@@ -897,6 +914,16 @@ T pop_front(std::vector<T>& v)
 
 struct parse_fn
 {
+    template <class T>
+    static auto try_parse(const std::string& txt) -> std::optional<T>
+    {
+        std::stringstream ss;
+        ss << txt;
+        T res;
+        ss >> res;
+        return ss ? std::optional<T>{ std::move(res) } : std::optional<T>{};
+    }
+
     static auto as_string(const token_t& tok) -> std::optional<value_t::string_t>
     {
         if (tok.front() == '\"' && tok.back() == '\"')
@@ -908,24 +935,12 @@ struct parse_fn
 
     static auto as_integer(const token_t& tok) -> std::optional<value_t::integer_t>
     {
-        if (std::all_of(std::begin(tok), std::end(tok), [](char ch) { return std::isdigit(ch); }))
-        {
-            return value_t::integer_t{ std::atoi(tok.c_str()) };
-        }
-        return {};
+        return try_parse<value_t::integer_t>(tok);
     }
 
     static auto as_floating_point(const token_t& tok) -> std::optional<value_t::floating_point_t>
     {
-        std::stringstream ss;
-        ss << tok;
-        value_t::floating_point_t res;
-        ss >> res;
-        if (ss)
-        {
-            return res;
-        }
-        return {};
+        return try_parse<value_t::floating_point_t>(tok);
     }
 
     static auto as_boolean(const token_t& tok) -> std::optional<value_t::boolean_t>
@@ -1008,10 +1023,6 @@ struct parse_fn
         {
             return *v;
         }
-        else if (const auto v = as_tagged(tok))
-        {
-            return *v;
-        }
         else if (const auto v = as_integer(tok))
         {
             return *v;
@@ -1039,7 +1050,33 @@ struct parse_fn
         throw std::runtime_error{ str("Unrecognized token '", tok, "'") };
     }
 
-    static auto read_from(std::vector<token_t>& tokens) -> value_t
+    static auto to_map(const std::vector<value_t>& items) -> value_t::map_t
+    {
+        auto result = value_t::map_t();
+        for (std::size_t i = 0; i < items.size(); i += 2)
+        {
+            result.emplace(items[i + 0], items[i + 1]);
+        }
+        return result;
+    }
+
+    static auto read_until(std::vector<token_t>& tokens, const token_t& delimiter) -> std::vector<value_t>
+    {
+        auto result = std::vector<value_t>{};
+        if (tokens.empty())
+        {
+            throw std::runtime_error{ "invalid parentheses" };
+        }
+        while (!tokens.empty() && tokens.front() != delimiter)
+        {
+            value_t v = read_from(tokens);
+            result.push_back(std::move(v));
+        }
+        pop_front(tokens);
+        return result;
+    }
+
+    static auto read_from(std::vector<token_t>& tokens, bool tagged = false) -> value_t
     {
         if (tokens.empty())
         {
@@ -1048,66 +1085,43 @@ struct parse_fn
         const auto front = pop_front(tokens);
         if (front == "(")
         {
-            auto result = value_t::list_t();
-            if (tokens.empty())
-            {
-                throw std::runtime_error{ "list: invalid parentheses (...)" };
-            }
-            while (!tokens.empty() && tokens.front() != ")")
-            {
-                result.push_back(read_from(tokens));
-            }
-            pop_front(tokens);
-            return result;
+            const auto items = read_until(tokens, ")");
+            return value_t::list_t{ items.begin(), items.end() };
         }
         else if (front == "[")
         {
-            auto result = value_t::vector_t();
-            if (tokens.empty())
-            {
-                throw std::runtime_error{ "vec: invalid parentheses [...]" };
-            }
-            while (!tokens.empty() && tokens.front() != "]")
-            {
-                result.push_back(read_from(tokens));
-            }
-            pop_front(tokens);
-            return result;
+            const auto items = read_until(tokens, "]");
+            return value_t::vector_t{ items.begin(), items.end() };
         }
-        else if (front == "#{")
+        else if (front == "#")
         {
-            auto result = value_t::set_t();
-            if (tokens.empty())
+            auto rest = read_from(tokens, true);
+            if (const auto v = rest.if_vector())
             {
-                throw std::runtime_error{ "set: invalid parentheses #{...}" };
+                return value_t::set_t(v->begin(), v->end());
             }
-            while (!tokens.empty() && tokens.front() != "}")
+            else if (const auto v = rest.if_symbol())
             {
-                result.insert(read_from(tokens));
+                return value_t::tagged_element_t{ v->begin(), v->end() };
             }
-            pop_front(tokens);
-            return result;
+            else
+            {
+                throw std::runtime_error{ "# must be followed by {...} (for set) or by symbol (for tagged element)" };
+            }
         }
         else if (front == "{")
         {
-            auto result = value_t::map_t();
-            if (tokens.empty())
+            auto items = read_until(tokens, "}");
+            if (!tagged)
             {
-                throw std::runtime_error{ "map: invalid parentheses {...}" };
+                return to_map(items);
             }
-            while (!tokens.empty() && tokens.front() != "}")
+            else
             {
-                value_t k = read_from(tokens);
-                value_t v = read_from(tokens);
-                result.emplace(std::move(k), std::move(v));
+                return value_t::vector_t{ items.begin(), items.end() };
             }
-            pop_front(tokens);
-            return result;
         }
-        else
-        {
-            return read_atom(front);
-        }
+        return read_atom(front);
     }
 
     auto operator()(string_view text) const -> value_t
@@ -1422,7 +1436,7 @@ struct evaluate_fn
         }
         catch (const std::exception& ex)
         {
-            std::throw_with_nested(std::runtime_error{ str("Error on evaluating `", value, "`") });
+            throw std::runtime_error{ str("Error on evaluating `", value, "`: ", ex.what()) };
         }
     }
 

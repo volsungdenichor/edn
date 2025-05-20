@@ -167,10 +167,8 @@ void run()
 
     const edn::value_t value = edn::parse(R"(
         (do
-            (def adam-mickiewicz {:name "Adam" :birth 1798 :death 1855})
-            (def inc (fn [x] (+ x 1)))
-            (debug adam-mickiewicz)
-            (print (map (fn [x] [x (inc x)]) (filter odd? [5 10 15 20 25])))
+            (def v #{1 2 \space "text" #_ [\A \B ]})
+            (debug v)
         )
     )");
 
