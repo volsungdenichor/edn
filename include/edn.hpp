@@ -188,6 +188,12 @@ struct value_t
         callable
     };
 
+    static const inline std::vector<std::tuple<char, std::string>> character_names = {
+        { ' ', "space" },
+        { '\n', "newline" },
+        { '\t', "tab" },
+    };
+
     friend std::ostream& operator<<(std::ostream& os, const type_t item)
     {
         switch (item)
@@ -533,6 +539,16 @@ struct value_t
         return m_type == type_t::callable ? &m_callable : nullptr;
     }
 
+    auto as_callable() const -> const callable_t&
+    {
+        const auto res = if_callable();
+        if (!res)
+        {
+            throw std::runtime_error{ str("callable expected, got ", *this, " [", m_type, "]") };
+        }
+        return *res;
+    }
+
     template <class T>
     static void destroy(T& item)
     {
@@ -700,22 +716,16 @@ struct value_t
         static const auto fmt_char = [](std::ostream& o, character_t ch)
         {
             o << "\\";
-            if (ch == ' ')
+            for (const auto& [symbol, name] : character_names)
             {
-                o << "space";
+                if (symbol == ch)
+                {
+                    o << name;
+                    return;
+                }
             }
-            else if (ch == '\n')
-            {
-                o << "newline";
-            }
-            else if (ch == '\t')
-            {
-                o << "tab";
-            }
-            else
-            {
-                o << ch;
-            }
+
+            o << ch;
         };
         switch (m_type)
         {
@@ -818,10 +828,75 @@ struct value_t
 
 using string_view = span<char>;
 
+struct stack_t
+{
+    using frame_type = std::map<value_t::symbol_t, value_t>;
+    frame_type frame;
+    stack_t* outer;
+
+    stack_t(frame_type frame, stack_t* outer) : frame{ std::move(frame) }, outer{ outer }
+    {
+    }
+
+    stack_t(stack_t* outer) : stack_t{ frame_type{}, outer }
+    {
+    }
+
+    const value_t& insert(const value_t::symbol_t& symbol, const value_t& v)
+    {
+        frame.emplace(symbol, v);
+        return v;
+    }
+
+    const value_t& get(const value_t::symbol_t& symbol) const
+    {
+        const auto iter = frame.find(symbol);
+        if (iter != frame.end())
+        {
+            return iter->second;
+        }
+        if (outer)
+        {
+            return outer->get(symbol);
+        }
+
+        throw std::runtime_error{ str("Unrecognized symbol `", symbol, "`") };
+    }
+
+    const value_t& operator[](const value_t::symbol_t& symbol) const
+    {
+        return get(symbol);
+    }
+};
+
+namespace detail
+{
+
 using token_t = std::string;
 
 struct tokenize_fn
 {
+    auto operator()(string_view text) const -> std::vector<token_t>
+    {
+        std::vector<token_t> result;
+        while (true)
+        {
+            const auto res = read_token(text);
+            if (!res)
+            {
+                break;
+            }
+            auto [token, remainder] = *res;
+            if (!token.empty())
+            {
+                result.push_back(std::move(token));
+            }
+            text = remainder;
+        }
+        return result;
+    }
+
+private:
     using tokenizer_result_t = std::tuple<token_t, string_view>;
 
     static auto read_quoted_string(string_view text) -> tokenizer_result_t
@@ -866,7 +941,7 @@ struct tokenize_fn
         {
             return read_token(text.drop_while(std::not_fn(is_new_line)));
         }
-        if (text[0] == '#' || is_parenthesis(text[0]))
+        if (text[0] == '#' || text[0] == '\'' || is_parenthesis(text[0]))
         {
             return std::tuple{ std::string(1, text[0]), text.slice(1, {}) };
         }
@@ -896,44 +971,43 @@ struct tokenize_fn
         }
         return {};
     }
-
-    auto operator()(string_view text) const -> std::vector<token_t>
-    {
-        std::vector<token_t> result;
-        while (true)
-        {
-            const auto res = read_token(text);
-            if (!res)
-            {
-                break;
-            }
-            auto [token, remainder] = *res;
-            if (!token.empty())
-            {
-                result.push_back(std::move(token));
-            }
-            text = std::move(remainder);
-        }
-        return result;
-    }
 };
 
 static constexpr inline auto tokenize = tokenize_fn{};
 
-template <class T>
-T pop_front(std::vector<T>& v)
-{
-    if (v.empty())
-    {
-        throw std::runtime_error{ "Cannot pop from empty vector" };
-    }
-    T result = v.front();
-    v.erase(std::begin(v));
-    return result;
-}
-
 struct parse_fn
 {
+    auto operator()(string_view text) const -> value_t
+    {
+        std::vector<token_t> tokens = tokenize(text);
+        std::vector<value_t> values;
+        while (!tokens.empty())
+        {
+            values.push_back(read_from(tokens));
+        }
+        if (values.size() == 1)
+        {
+            return values.at(0);
+        }
+        value_t::list_t result;
+        result.push_back(value_t::symbol_t{ "do" });
+        result.insert(result.end(), values.begin(), values.end());
+        return result;
+    }
+
+private:
+    template <class T>
+    static T pop_front(std::vector<T>& v)
+    {
+        if (v.empty())
+        {
+            throw std::runtime_error{ "Cannot pop from empty vector" };
+        }
+        T result = v.front();
+        v.erase(std::begin(v));
+        return result;
+    }
+
     template <class T>
     static auto try_parse(const std::string& txt) -> std::optional<T>
     {
@@ -996,17 +1070,12 @@ struct parse_fn
         {
             return {};
         }
-        if (tok == "\\space")
+        for (const auto& [symbol, name] : value_t::character_names)
         {
-            return value_t::character_t{ ' ' };
-        }
-        if (tok == "\\newline")
-        {
-            return value_t::character_t{ '\n' };
-        }
-        if (tok == "\\tab")
-        {
-            return value_t::character_t{ '\t' };
+            if (tok.substr(1) == name)
+            {
+                return value_t::character_t{ symbol };
+            }
         }
         if (tok.size() == 2 && std::isprint(tok[1]))
         {
@@ -1067,7 +1136,7 @@ struct parse_fn
         {
             return *v;
         }
-        throw std::runtime_error{ str("Unrecognized token '", tok, "'") };
+        throw std::runtime_error{ str("Unrecognized token `", tok, "`") };
     }
 
     static auto to_map(const std::vector<value_t>& items) -> value_t::map_t
@@ -1103,6 +1172,11 @@ struct parse_fn
             return value_t();
         }
         const auto front = pop_front(tokens);
+        if (front == "'")
+        {
+            auto arg = read_from(tokens);
+            return value_t::list_t{ value_t::symbol_t{ "do" }, std::move(arg) };
+        }
         if (front == "(")
         {
             const auto items = read_until(tokens, ")");
@@ -1143,65 +1217,24 @@ struct parse_fn
         }
         return read_atom(front);
     }
-
-    auto operator()(string_view text) const -> value_t
-    {
-        auto tokens = tokenize(text);
-        return read_from(tokens);
-    }
 };
 
 static constexpr inline auto parse = parse_fn{};
 
-struct stack_t
-{
-    using frame_type = std::map<value_t::symbol_t, value_t>;
-    frame_type frame;
-    stack_t* outer;
-
-    stack_t(frame_type frame, stack_t* outer) : frame{ std::move(frame) }, outer{ outer }
-    {
-    }
-
-    stack_t(stack_t* outer) : stack_t{ frame_type{}, outer }
-    {
-    }
-
-    const value_t& insert(const value_t::symbol_t& symbol, const value_t& v)
-    {
-        frame.emplace(symbol, v);
-        return v;
-    }
-
-    const value_t& get(const value_t::symbol_t& symbol) const
-    {
-        const auto iter = frame.find(symbol);
-        if (iter != frame.end())
-        {
-            return iter->second;
-        }
-        if (outer)
-        {
-            return outer->get(symbol);
-        }
-
-        throw std::runtime_error{ str("Unrecognized symbol '", symbol, "'") };
-    }
-
-    const value_t& operator[](const value_t::symbol_t& symbol) const
-    {
-        return get(symbol);
-    }
-};
-
 struct evaluate_fn
 {
-    template <class T>
-    static auto deref(T* ptr, const std::string& msg) -> T&
+    auto operator()(const value_t& value, stack_t& stack) const -> value_t
+    {
+        return eval(value, stack);
+    }
+
+private:
+    template <class T, class... Args>
+    static auto deref(T* ptr, const Args&... args) -> T&
     {
         if (!ptr)
         {
-            throw std::runtime_error{ msg };
+            throw std::runtime_error{ str(args...) };
         }
         return *ptr;
     }
@@ -1277,7 +1310,7 @@ struct evaluate_fn
             input.begin(),
             input.end(),
             value_t{},
-            [&](const value_t&, const value_t& item) -> value_t { return eval(item, stack); });
+            [&](const value_t&, const value_t& item) -> value_t { return do_eval(item, stack); });
     }
 
     auto eval_let(span<value_t> input, stack_t& stack) const -> value_t
@@ -1286,14 +1319,15 @@ struct evaluate_fn
         auto new_stack = stack_t{ stack_t::frame_type{}, &stack };
         for (std::size_t i = 0; i < bindings.size(); i += 2)
         {
-            new_stack.insert(deref(bindings.at(i + 0).if_symbol(), "symbol expected"), eval(bindings.at(i + 1), new_stack));
+            new_stack.insert(
+                deref(bindings.at(i + 0).if_symbol(), "symbol expected"), do_eval(bindings.at(i + 1), new_stack));
         }
         return eval_block(input.slice(1, {}), new_stack);
     }
 
     auto eval_def(span<value_t> input, stack_t& stack) const -> value_t
     {
-        return stack.insert(deref(input.at(0).if_symbol(), "symbol expected"), eval(input.at(1), stack));
+        return stack.insert(deref(input.at(0).if_symbol(), "symbol expected"), do_eval(input.at(1), stack));
     }
 
     auto eval_callable(span<value_t> input, stack_t& stack) const -> value_t::callable_t
@@ -1313,12 +1347,12 @@ struct evaluate_fn
 
     auto eval_boolean(const value_t& value, stack_t& stack) const -> bool
     {
-        return deref(eval(value, stack).if_boolean(), "boolean expected");
+        return deref(do_eval(value, stack).if_boolean(), "boolean expected");
     }
 
     auto eval_if(span<value_t> input, stack_t& stack) const -> value_t
     {
-        return eval_boolean(input.at(0), stack) ? eval(input.at(1), stack) : eval(input.at(2), stack);
+        return eval_boolean(input.at(0), stack) ? do_eval(input.at(1), stack) : do_eval(input.at(2), stack);
     }
 
     auto eval_cond(span<value_t> input, stack_t& stack) const -> value_t
@@ -1327,7 +1361,7 @@ struct evaluate_fn
         {
             if (input.at(i + 0) == value_t::keyword_t{ "else" } || eval_boolean(input.at(i + 0), stack))
             {
-                return eval(input.at(i + 1), stack);
+                return do_eval(input.at(i + 1), stack);
             }
         }
         return value_t{};
@@ -1335,11 +1369,12 @@ struct evaluate_fn
 
     auto eval_callable(const value_t& head, span<value_t> tail, stack_t& stack) const -> value_t
     {
-        const value_t::callable_t callable = deref(eval(head, stack).if_callable(), "callable expected");
+        // const value_t::callable_t callable = deref(do_eval(head, stack).if_callable(), "callable expected");
+        const value_t::callable_t callable = do_eval(head, stack).as_callable();
         std::vector<value_t> args;
         args.reserve(tail.size());
         std::transform(
-            tail.begin(), tail.end(), std::back_inserter(args), [&](const value_t& item) { return eval(item, stack); });
+            tail.begin(), tail.end(), std::back_inserter(args), [&](const value_t& item) { return do_eval(item, stack); });
         return callable(args);
     }
 
@@ -1349,7 +1384,7 @@ struct evaluate_fn
             input.begin(),
             input.end(),
             value_t{},
-            [&](const value_t&, const value_t& item) -> value_t { return eval(item, stack); });
+            [&](const value_t&, const value_t& item) -> value_t { return do_eval(item, stack); });
     }
 
     auto eval_list(const value_t::list_t& input, stack_t& stack) const -> value_t
@@ -1360,6 +1395,10 @@ struct evaluate_fn
         }
         const value_t& head = input.at(0);
         const auto tail = span<value_t>{ input }.slice(1, {});
+        if (head == value_t::symbol_t{ "quote" })
+        {
+            return tail[0];
+        }
         if (head == value_t::symbol_t{ "let" })
         {
             return eval_let(tail, stack);
@@ -1396,7 +1435,10 @@ struct evaluate_fn
         value_t::vector_t output;
         output.reserve(input.size());
         std::transform(
-            input.begin(), input.end(), std::back_inserter(output), [&](const value_t& item) { return eval(item, stack); });
+            input.begin(),
+            input.end(),
+            std::back_inserter(output),
+            [&](const value_t& item) { return do_eval(item, stack); });
 
         return output;
     }
@@ -1408,7 +1450,7 @@ struct evaluate_fn
             input.begin(),
             input.end(),
             std::inserter(output, output.end()),
-            [&](const value_t& item) { return eval(item, stack); });
+            [&](const value_t& item) { return do_eval(item, stack); });
 
         return output;
     }
@@ -1418,7 +1460,7 @@ struct evaluate_fn
         value_t::map_t output;
         for (const auto& [k, v] : input)
         {
-            output.emplace(eval(k, stack), eval(v, stack));
+            output.emplace(do_eval(k, stack), do_eval(v, stack));
         }
         return output;
     }
@@ -1459,13 +1501,14 @@ struct evaluate_fn
             throw std::runtime_error{ str("Error on evaluating `", value, "`: ", ex.what()) };
         }
     }
-
-    auto operator()(const value_t& value, stack_t& stack) const -> value_t
-    {
-        return eval(value, stack);
-    }
 };
 
 static constexpr inline auto evaluate = evaluate_fn{};
+
+}  // namespace detail
+
+using detail::evaluate;
+using detail::parse;
+using detail::tokenize;
 
 }  // namespace edn

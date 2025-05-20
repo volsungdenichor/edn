@@ -144,6 +144,7 @@ void run()
         {
             edn::stack_t result{ nullptr };
             result.insert(edn::value_t::symbol_t{ "print" }, edn::value_t::callable_t{ &print });
+            result.insert(edn::value_t::symbol_t{ "println" }, edn::value_t::callable_t{ &print });
             result.insert(edn::value_t::symbol_t{ "debug" }, edn::value_t::callable_t{ &debug });
 
             result.insert(edn::value_t::symbol_t{ "+" }, edn::value_t::callable_t{ binary_op<std::plus<>>{} });
@@ -166,15 +167,13 @@ void run()
         });
 
     const edn::value_t value = edn::parse(R"(
-        (do
-            (def v #{1 2 \space "text" #_ [\A \B ]}); ala ma kota
-            (debug v)
-        )
+        (print '(+ 2 3))
+        (print "Hello")
     )");
 
-    std::cout << value << "\n\n";
+    std::cout << "expr: " << value << "\n\n";
     const auto result = edn::evaluate(value, stack);
-    std::cout << "> " << result << "\n";
+    std::cout << "result: " << result << "\n";
 }
 
 int main()
@@ -185,9 +184,6 @@ int main()
     }
     catch (const std::exception& ex)
     {
-        std::cout << "\n"
-                  << "Error:"
-                  << "\n"
-                  << ex.what();
+        std::cout << "\nError:\n" << ex.what() << "\n";
     }
 }
