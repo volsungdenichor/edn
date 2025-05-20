@@ -141,6 +141,20 @@ public:
         return span{ begin() + b, std::max(difference_type{ 0 }, e - b) };
     }
 
+    template <class Pred>
+    span take_while(Pred&& pred) const
+    {
+        auto e = std::find_if_not(begin(), end(), std::ref(pred));
+        return span(begin(), e);
+    }
+
+    template <class Pred>
+    span drop_while(Pred&& pred) const
+    {
+        auto b = std::find_if_not(begin(), end(), std::ref(pred));
+        return span(b, end());
+    }
+
     friend bool operator==(span lhs, const span rhs)
     {
         return lhs.size() == rhs.size() && std::equal(lhs.begin(), lhs.end(), std::begin(rhs));
@@ -841,10 +855,16 @@ struct tokenize_fn
             = [](char ch) { return ch == '(' || ch == ')' || ch == '[' || ch == ']' || ch == '{' || ch == '}'; };
         static const auto is_quotation_mark = [](char ch) { return ch == '"'; };
         static const auto is_space = [](char ch) { return std::isspace(ch) || ch == ','; };
+        static const auto is_comment = [](char ch) { return ch == ';'; };
+        static const auto is_new_line = [](char ch) { return ch == '\n'; };
 
         if (text.empty())
         {
             return {};
+        }
+        if (is_comment(text[0]))
+        {
+            return read_token(text.drop_while(std::not_fn(is_new_line)));
         }
         if (text[0] == '#' || is_parenthesis(text[0]))
         {

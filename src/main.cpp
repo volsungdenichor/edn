@@ -167,7 +167,7 @@ void run()
 
     const edn::value_t value = edn::parse(R"(
         (do
-            (def v #{1 2 \space "text" #_ [\A \B ]})
+            (def v #{1 2 \space "text" #_ [\A \B ]}); ala ma kota
             (debug v)
         )
     )");
