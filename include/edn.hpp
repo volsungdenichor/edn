@@ -75,6 +75,12 @@ static constexpr struct delimit_fn
 using detail::delimit;
 using detail::str;
 
+template <class E = std::runtime_error, class... Args>
+auto exception(Args&&... args) -> E
+{
+    return E{ str(std::forward<Args>(args)...) };
+}
+
 template <class T>
 class span
 {
@@ -596,7 +602,7 @@ struct value_t
         const auto res = if_callable();
         if (!res)
         {
-            throw std::runtime_error{ str("callable expected, got ", *this, " [", m_type, "]") };
+            throw exception<>("callable expected, got ", *this, " [", m_type, "]");
         }
         return *res;
     }
@@ -665,15 +671,21 @@ struct value_t
 
     value_t& operator=(const value_t& other)
     {
-        this->~value_t();
-        new (this) value_t{ other };
+        if (this != &other)
+        {
+            this->~value_t();
+            new (this) value_t{ other };
+        }
         return *this;
     }
 
     value_t& operator=(value_t&& other)
     {
-        this->~value_t();
-        new (this) value_t{ std::move(other) };
+        if (this != &other)
+        {
+            this->~value_t();
+            new (this) value_t{ std::move(other) };
+        }
         return *this;
     }
 
@@ -912,7 +924,7 @@ struct stack_t
             return outer->get(symbol);
         }
 
-        throw std::runtime_error{ str("Unrecognized symbol `", symbol, "`") };
+        throw exception<>("Unrecognized symbol `", symbol, "`");
     }
 
     const value_t& operator[](const value_t::symbol_t& symbol) const
@@ -1053,7 +1065,7 @@ private:
     {
         if (v.empty())
         {
-            throw std::runtime_error{ "Cannot pop from empty vector" };
+            throw exception<>("Cannot pop from empty vector");
         }
         T result = v.front();
         v.erase(std::begin(v));
@@ -1192,7 +1204,7 @@ private:
         {
             return *v;
         }
-        throw std::runtime_error{ str("Unrecognized token `", tok, "`") };
+        throw exception<>("Unrecognized token `", tok, "`");
     }
 
     static auto to_map(const std::vector<value_t>& items) -> value_t::map_t
@@ -1210,7 +1222,7 @@ private:
         auto result = std::vector<value_t>{};
         if (tokens.empty())
         {
-            throw std::runtime_error{ "invalid parentheses" };
+            throw exception<>("invalid parentheses");
         }
         while (!tokens.empty() && tokens.front() != delimiter)
         {
@@ -1256,7 +1268,7 @@ private:
             }
             else
             {
-                throw std::runtime_error{ "# must be followed by {...} (for set) or by symbol (for tagged element)" };
+                throw exception<>("# must be followed by {...} (for set) or by symbol (for tagged element)");
             }
         }
         else if (front == "{")
@@ -1290,7 +1302,7 @@ private:
     {
         if (!ptr)
         {
-            throw std::runtime_error{ str(args...) };
+            throw exception<>(args...);
         }
         return *ptr;
     }
@@ -1364,7 +1376,7 @@ private:
                     return self.eval_block(overload.body, new_stack);
                 }
             }
-            throw std::runtime_error{ "could not resolve function overload" };
+            throw exception<>("could not resolve function overload for ", args.size(), " arg(s)");
         };
     };
 
@@ -1400,7 +1412,7 @@ private:
         {
             return clojure_t::overload_t{ input.at(0), input.slice(1, {}) };
         }
-        throw std::runtime_error{ "callable: vector required" };
+        throw exception<>("callable: vector required");
     }
 
     auto eval_callable(span<value_t> input, stack_t& stack) const -> value_t::callable_t
@@ -1583,7 +1595,7 @@ private:
         }
         catch (const std::exception& ex)
         {
-            throw std::runtime_error{ str("Error on evaluating `", value, "`: ", ex.what()) };
+            throw exception<>("Error on evaluating `", value, "`: ", ex.what());
         }
     }
 };
