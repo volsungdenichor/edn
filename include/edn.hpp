@@ -20,13 +20,60 @@
 namespace edn
 {
 
-template <class... Args>
-auto str(Args&&... args) -> std::string
+namespace detail
 {
-    std::stringstream ss;
-    (ss << ... << std::forward<Args>(args));
-    return ss.str();
-}
+
+static constexpr struct str_fn
+{
+    template <class... Args>
+    auto operator()(Args&&... args) const -> std::string
+    {
+        std::stringstream ss;
+        (ss << ... << std::forward<Args>(args));
+        return ss.str();
+    }
+} str;
+
+static constexpr struct delimit_fn
+{
+    template <class Iter>
+    struct impl_t
+    {
+        Iter begin;
+        Iter end;
+        std::string_view delimiter;
+
+        friend std::ostream& operator<<(std::ostream& os, const impl_t& item)
+        {
+            for (Iter it = item.begin; it != item.end; ++it)
+            {
+                if (it != item.begin)
+                {
+                    os << item.delimiter;
+                }
+                os << *it;
+            }
+            return os;
+        }
+    };
+
+    template <class Iter>
+    auto operator()(Iter begin, Iter end, std::string_view delimiter) const -> impl_t<Iter>
+    {
+        return impl_t<Iter>{ begin, end, delimiter };
+    }
+
+    template <class Range>
+    auto operator()(Range&& range, std::string_view delimiter) const -> impl_t<decltype(std::begin(range))>
+    {
+        return (*this)(std::begin(range), std::end(range), delimiter);
+    }
+} delimit;
+
+}  // namespace detail
+
+using detail::delimit;
+using detail::str;
 
 template <class T>
 class span
@@ -449,6 +496,11 @@ struct value_t
             return os << "<< callable >>";
         }
     };
+
+    type_t type() const
+    {
+        return m_type;
+    }
 
     type_t m_type;
     union
@@ -1029,7 +1081,11 @@ private:
 
     static auto as_integer(const token_t& tok) -> std::optional<value_t::integer_t>
     {
-        return try_parse<value_t::integer_t>(tok);
+        if (std::find(tok.begin(), tok.end(), '.') == tok.end())
+        {
+            return try_parse<value_t::integer_t>(tok);
+        }
+        return {};
     }
 
     static auto as_floating_point(const token_t& tok) -> std::optional<value_t::floating_point_t>
@@ -1104,6 +1160,14 @@ private:
 
     static auto read_atom(const token_t& tok) -> value_t
     {
+        if (const auto v = as_boolean(tok))
+        {
+            return *v;
+        }
+        else if (const auto v = as_nil(tok))
+        {
+            return *v;
+        }
         if (const auto v = as_string(tok))
         {
             return *v;
@@ -1117,14 +1181,6 @@ private:
             return *v;
         }
         else if (const auto v = as_floating_point(tok))
-        {
-            return *v;
-        }
-        else if (const auto v = as_boolean(tok))
-        {
-            return *v;
-        }
-        else if (const auto v = as_nil(tok))
         {
             return *v;
         }
@@ -1175,7 +1231,7 @@ private:
         if (front == "'")
         {
             auto arg = read_from(tokens);
-            return value_t::list_t{ value_t::symbol_t{ "do" }, std::move(arg) };
+            return value_t::list_t{ value_t::symbol_t{ "quote" }, std::move(arg) };
         }
         if (front == "(")
         {
@@ -1241,66 +1297,74 @@ private:
 
     struct clojure_t
     {
+        struct overload_t
+        {
+            value_t parameters;
+            std::vector<value_t> body;
+
+            auto params() const -> std::tuple<std::vector<value_t::symbol_t>, std::optional<value_t::symbol_t>>
+            {
+                std::vector<value_t::symbol_t> mandatory;
+                std::vector<value_t::symbol_t> variadic;
+                std::vector<value_t::symbol_t>* current = &mandatory;
+                for (const value_t& v : deref(parameters.if_vector(), "vector required"))
+                {
+                    const value_t::symbol_t& s = deref(v.if_symbol(), "symbol required");
+                    if (s == value_t::symbol_t{ "&" })
+                    {
+                        current = &variadic;
+                    }
+                    else
+                    {
+                        current->push_back(s);
+                    }
+                }
+                return { std::move(mandatory),
+                         !variadic.empty() ? std::optional<value_t::symbol_t>{ variadic.at(0) }
+                                           : std::optional<value_t::symbol_t>{} };
+            }
+        };
+
         const evaluate_fn& self;
-        value_t parameters;
-        std::vector<value_t> body;
+        std::vector<overload_t> overloads;
         stack_t& stack;
 
         auto operator()(span<value_t> args) -> value_t
         {
             auto new_stack = stack_t{ &stack };
 
-            const std::vector<value_t::symbol_t> params = std::invoke(
-                [&]() -> std::vector<value_t::symbol_t>
-                {
-                    std::vector<value_t::symbol_t> result;
-                    const auto p = deref(parameters.if_vector(), "vector required");
-                    for (const value_t& v : p)
-                    {
-                        result.push_back(deref(v.if_symbol(), "symbol required"));
-                    }
-                    return result;
-                });
-
-            if (params.size() >= 2 && params.at(params.size() - 2) == value_t::symbol_t{ "&" })
+            for (const overload_t& overload : overloads)
             {
-                const auto regular_params = span<value_t::symbol_t>{ params, }.slice({}, -2);
+                const auto [mandatory, variadic] = overload.params();
 
-                if (args.size() < regular_params.size())
+                if (args.size() == mandatory.size() && !variadic)
                 {
-                    throw std::runtime_error{ "too few arguments to a function" };
-                }
-
-                value_t::list_t rest;
-                for (std::size_t i = 0; i < args.size(); ++i)
-                {
-                    if (i < regular_params.size())
+                    for (std::size_t i = 0; i < args.size(); ++i)
                     {
-                        new_stack.insert(regular_params.at(i), args.at(i));
+                        new_stack.insert(mandatory.at(i), args.at(i));
                     }
-                    else
+                    return self.eval_block(overload.body, new_stack);
+                }
+                if (args.size() > mandatory.size() && variadic)
+                {
+                    value_t::list_t tail;
+                    for (std::size_t i = 0; i < args.size(); ++i)
                     {
-                        rest.push_back(args.at(i));
+                        if (i < mandatory.size())
+                        {
+                            new_stack.insert(mandatory.at(i), args.at(i));
+                        }
+                        else
+                        {
+                            tail.push_back(args.at(i));
+                        }
                     }
-                }
-                new_stack.insert(params.back(), rest);
-            }
-            else
-            {
-                const auto regular_params = span<value_t::symbol_t>{ params };
 
-                if (args.size() < regular_params.size())
-                {
-                    throw std::runtime_error{ "too few arguments to a function" };
-                }
-
-                for (std::size_t i = 0; i < args.size(); ++i)
-                {
-                    new_stack.insert(regular_params.at(i), args.at(i));
+                    new_stack.insert(*variadic, tail);
+                    return self.eval_block(overload.body, new_stack);
                 }
             }
-
-            return self.eval_block(body, new_stack);
+            throw std::runtime_error{ "could not resolve function overload" };
         };
     };
 
@@ -1330,9 +1394,30 @@ private:
         return stack.insert(deref(input.at(0).if_symbol(), "symbol expected"), do_eval(input.at(1), stack));
     }
 
+    static auto create_overload(span<value_t> input) -> clojure_t::overload_t
+    {
+        if (input.at(0).if_vector())
+        {
+            return clojure_t::overload_t{ input.at(0), input.slice(1, {}) };
+        }
+        throw std::runtime_error{ "callable: vector required" };
+    }
+
     auto eval_callable(span<value_t> input, stack_t& stack) const -> value_t::callable_t
     {
-        return value_t::callable_t{ clojure_t{ *this, input.at(0), input.slice(1, {}), stack } };
+        std::vector<clojure_t::overload_t> overloads;
+        if (std::all_of(input.begin(), input.end(), [](const value_t& v) { return v.if_list(); }))
+        {
+            for (const value_t& v : input)
+            {
+                overloads.push_back(create_overload(span<value_t>(deref(v.if_list(), "list expected"))));
+            }
+        }
+        else
+        {
+            overloads.push_back(create_overload(input));
+        }
+        return value_t::callable_t{ clojure_t{ *this, std::move(overloads), stack } };
     }
 
     auto eval_fn(span<value_t> input, stack_t& stack) const -> value_t

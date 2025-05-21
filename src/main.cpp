@@ -6,6 +6,31 @@ auto to_span(const edn::value_t& arg) -> edn::span<edn::value_t>
     return edn::span<edn::value_t>(&arg, 1);
 }
 
+auto type(edn::span<edn::value_t> args) -> edn::value_t
+{
+    switch (args.at(0).type())
+    {
+#define CASE(x) \
+    case edn::value_t::type_t::x: return edn::value_t::keyword_t{ #x }
+        CASE(nil);
+        CASE(boolean);
+        CASE(integer);
+        CASE(floating_point);
+        CASE(string);
+        CASE(character);
+        CASE(symbol);
+        CASE(keyword);
+        CASE(tagged_element);
+        CASE(list);
+        CASE(vector);
+        CASE(set);
+        CASE(map);
+        CASE(callable);
+#undef CASE
+        default: return edn::value_t::keyword_t{ "nil" };
+    }
+}
+
 auto print(edn::span<edn::value_t> args) -> edn::value_t
 {
     for (const edn::value_t& arg : args)
@@ -143,6 +168,7 @@ void run()
         [&]() -> edn::stack_t
         {
             edn::stack_t result{ nullptr };
+            result.insert(edn::value_t::symbol_t{ "type" }, edn::value_t::callable_t{ &type });
             result.insert(edn::value_t::symbol_t{ "print" }, edn::value_t::callable_t{ &print });
             result.insert(edn::value_t::symbol_t{ "println" }, edn::value_t::callable_t{ &print });
             result.insert(edn::value_t::symbol_t{ "debug" }, edn::value_t::callable_t{ &debug });
@@ -167,8 +193,32 @@ void run()
         });
 
     const edn::value_t value = edn::parse(R"(
-        (print '(+ 2 3))
-        (print "Hello")
+        (defn sum
+            ([a] a)
+            ([a b] (+ a (sum b)))
+            ([a b c] (+ a (sum b c)))
+        )
+
+        (println (sum 3))
+        (println (sum 3 4))
+        (println (sum 3 4 5))
+
+        (defn get_info [x] {:value x :type (type x)})
+        (print (get_info true))
+        (print (get_info false))
+        (print (get_info nil))
+        (print (get_info 53))
+        (print (get_info 2.71))
+        (print (get_info \X))
+        (print (get_info "ABC"))
+        (print (get_info :abc))
+        (print (get_info 'abc))
+        (print (get_info '(:A :B :C)))
+        (print (get_info #{:A :B :C}))
+        (print (get_info {:name "Gumball"}))
+        (print (get_info [:A :B :C]))
+
+        (print ">>> " ''(+ 2 3))
     )");
 
     std::cout << "expr: " << value << "\n\n";
