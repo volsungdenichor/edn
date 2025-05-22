@@ -221,246 +221,248 @@ public:
     }
 };
 
+template <class Range, class Fmt>
+static void format_range(std::ostream& os, Range&& range, Fmt&& fmt)
+{
+    const auto b = std::begin(range);
+    const auto e = std::end(range);
+    for (auto it = b; it != e; ++it)
+    {
+        if (it != b)
+        {
+            os << " ";
+        }
+        fmt(os, *it);
+    }
+}
+
+enum class format_mode_t
+{
+    str,
+    repr
+};
+
+struct value_t;
+
+struct nil_t
+{
+    void format(std::ostream& os, format_mode_t mode) const
+    {
+        os << "nil";
+    }
+
+    friend std::ostream& operator<<(std::ostream& os, const nil_t& item)
+    {
+        item.format(os, format_mode_t::repr);
+        return os;
+    }
+};
+
+using boolean_t = bool;
+using integer_t = std::int32_t;
+using floating_point_t = double;
+using character_t = char;
+
+struct string_t : public std::string
+{
+    using base_t = std::string;
+    using base_t::base_t;
+
+    void format(std::ostream& os, format_mode_t mode) const
+    {
+        if (mode == format_mode_t::repr)
+        {
+            os << '"' << (const base_t&)(*this) << '"';
+        }
+        else
+        {
+            os << (const base_t&)(*this);
+        }
+    }
+
+    friend std::ostream& operator<<(std::ostream& os, const string_t& item)
+    {
+        item.format(os, format_mode_t::repr);
+        return os;
+    }
+};
+
+struct symbol_t : public std::string
+{
+    using base_t = std::string;
+    using base_t::base_t;
+};
+
+struct keyword_t : public std::string
+{
+    using base_t = std::string;
+    using base_t::base_t;
+
+    void format(std::ostream& os, format_mode_t mode) const
+    {
+        (void)mode;
+        os << ':' << (const base_t&)(*this);
+    }
+
+    friend std::ostream& operator<<(std::ostream& os, const keyword_t& item)
+    {
+        item.format(os, format_mode_t::repr);
+        return os;
+    }
+};
+
+struct tagged_element_t : public std::string
+{
+    using base_t = std::string;
+    using base_t::base_t;
+
+    void format(std::ostream& os, format_mode_t mode) const
+    {
+        (void)mode;
+        os << '#' << (const base_t&)(*this);
+    }
+
+    friend std::ostream& operator<<(std::ostream& os, const tagged_element_t& item)
+    {
+        item.format(os, format_mode_t::repr);
+        return os;
+    }
+};
+
+struct list_t : public std::vector<value_t>
+{
+    using base_t = std::vector<value_t>;
+    using base_t::base_t;
+
+    void format(std::ostream& os, format_mode_t mode) const
+    {
+        os << "(";
+        format_range(os, *this, [&](std::ostream& s, const auto& it) { it.format(s, mode); });
+        os << ")";
+    }
+
+    friend std::ostream& operator<<(std::ostream& os, const list_t& item)
+    {
+        item.format(os, format_mode_t::repr);
+        return os;
+    }
+};
+
+struct vector_t : public std::vector<value_t>
+{
+    using base_t = std::vector<value_t>;
+    using base_t::base_t;
+
+    void format(std::ostream& os, format_mode_t mode) const
+    {
+        os << "[";
+        format_range(os, *this, [&](std::ostream& s, const auto& it) { it.format(s, mode); });
+        os << "]";
+    }
+
+    friend std::ostream& operator<<(std::ostream& os, const vector_t& item)
+    {
+        item.format(os, format_mode_t::repr);
+        return os;
+    }
+};
+
+struct set_t : public std::set<value_t>
+{
+    using base_t = std::set<value_t>;
+    using base_t::base_t;
+
+    void format(std::ostream& os, format_mode_t mode) const
+    {
+        os << "#{";
+        format_range(os, *this, [&](std::ostream& s, const auto& it) { it.format(s, mode); });
+        os << "}";
+    }
+
+    friend std::ostream& operator<<(std::ostream& os, const set_t& item)
+    {
+        item.format(os, format_mode_t::repr);
+        return os;
+    }
+};
+
+struct map_t : public std::map<value_t, value_t>
+{
+    using base_t = std::map<value_t, value_t>;
+    using base_t::base_t;
+
+    void format(std::ostream& os, format_mode_t mode) const
+    {
+        os << "{";
+        format_range(
+            os,
+            *this,
+            [&](std::ostream& s, const auto& it)
+            {
+                it.first.format(s, mode);
+                s << " ";
+                it.second.format(s, mode);
+            });
+        os << "}";
+    }
+
+    friend std::ostream& operator<<(std::ostream& os, const map_t& item)
+    {
+        item.format(os, format_mode_t::repr);
+        return os;
+    }
+};
+
+enum class type_t
+{
+    nil,
+    boolean,
+    integer,
+    floating_point,
+    string,
+    character,
+    symbol,
+    keyword,
+    tagged_element,
+    list,
+    vector,
+    set,
+    map,
+    callable
+};
+
+inline std::ostream& operator<<(std::ostream& os, const type_t item)
+{
+    switch (item)
+    {
+#define CASE(x) \
+    case type_t::x: return os << #x
+        CASE(nil);
+        CASE(boolean);
+        CASE(integer);
+        CASE(floating_point);
+        CASE(string);
+        CASE(character);
+        CASE(symbol);
+        CASE(keyword);
+        CASE(tagged_element);
+        CASE(list);
+        CASE(vector);
+        CASE(set);
+        CASE(map);
+        CASE(callable);
+#undef CASE
+        default: break;
+    }
+    return os;
+}
+
 struct value_t
 {
-    enum class type_t
-    {
-        nil,
-        boolean,
-        integer,
-        floating_point,
-        string,
-        character,
-        symbol,
-        keyword,
-        tagged_element,
-        list,
-        vector,
-        set,
-        map,
-        callable
-    };
-
     static const inline std::vector<std::tuple<char, std::string>> character_names = {
         { ' ', "space" },
         { '\n', "newline" },
         { '\t', "tab" },
-    };
-
-    friend std::ostream& operator<<(std::ostream& os, const type_t item)
-    {
-        switch (item)
-        {
-#define CASE(x) \
-    case type_t::x: return os << #x
-            CASE(nil);
-            CASE(boolean);
-            CASE(integer);
-            CASE(floating_point);
-            CASE(string);
-            CASE(character);
-            CASE(symbol);
-            CASE(keyword);
-            CASE(tagged_element);
-            CASE(list);
-            CASE(vector);
-            CASE(set);
-            CASE(map);
-            CASE(callable);
-#undef CASE
-            default: break;
-        }
-        return os;
-    }
-
-    enum class format_mode_t
-    {
-        str,
-        repr
-    };
-
-    struct nil_t
-    {
-        void format(std::ostream& os, format_mode_t mode) const
-        {
-            os << "nil";
-        }
-
-        friend std::ostream& operator<<(std::ostream& os, const nil_t& item)
-        {
-            item.format(os, format_mode_t::repr);
-            return os;
-        }
-    };
-
-    using boolean_t = bool;
-    using integer_t = std::int32_t;
-    using floating_point_t = double;
-    using character_t = char;
-
-    struct string_t : public std::string
-    {
-        using base_t = std::string;
-        using base_t::base_t;
-
-        void format(std::ostream& os, format_mode_t mode) const
-        {
-            if (mode == format_mode_t::repr)
-            {
-                os << '"' << (const base_t&)(*this) << '"';
-            }
-            else
-            {
-                os << (const base_t&)(*this);
-            }
-        }
-
-        friend std::ostream& operator<<(std::ostream& os, const string_t& item)
-        {
-            item.format(os, format_mode_t::repr);
-            return os;
-        }
-    };
-
-    struct symbol_t : public std::string
-    {
-        using base_t = std::string;
-        using base_t::base_t;
-    };
-
-    struct keyword_t : public std::string
-    {
-        using base_t = std::string;
-        using base_t::base_t;
-
-        void format(std::ostream& os, format_mode_t mode) const
-        {
-            (void)mode;
-            os << ':' << (const base_t&)(*this);
-        }
-
-        friend std::ostream& operator<<(std::ostream& os, const keyword_t& item)
-        {
-            item.format(os, format_mode_t::repr);
-            return os;
-        }
-    };
-
-    struct tagged_element_t : public std::string
-    {
-        using base_t = std::string;
-        using base_t::base_t;
-
-        void format(std::ostream& os, format_mode_t mode) const
-        {
-            (void)mode;
-            os << '#' << (const base_t&)(*this);
-        }
-
-        friend std::ostream& operator<<(std::ostream& os, const tagged_element_t& item)
-        {
-            item.format(os, format_mode_t::repr);
-            return os;
-        }
-    };
-
-    template <class Range, class Fmt>
-    static void format_range(std::ostream& os, Range&& range, Fmt&& fmt)
-    {
-        const auto b = std::begin(range);
-        const auto e = std::end(range);
-        for (auto it = b; it != e; ++it)
-        {
-            if (it != b)
-            {
-                os << " ";
-            }
-            fmt(os, *it);
-        }
-    }
-
-    struct list_t : public std::vector<value_t>
-    {
-        using base_t = std::vector<value_t>;
-        using base_t::base_t;
-
-        void format(std::ostream& os, format_mode_t mode) const
-        {
-            os << "(";
-            format_range(os, *this, [&](std::ostream& s, const auto& it) { it.format(s, mode); });
-            os << ")";
-        }
-
-        friend std::ostream& operator<<(std::ostream& os, const list_t& item)
-        {
-            item.format(os, format_mode_t::repr);
-            return os;
-        }
-    };
-
-    struct vector_t : public std::vector<value_t>
-    {
-        using base_t = std::vector<value_t>;
-        using base_t::base_t;
-
-        void format(std::ostream& os, format_mode_t mode) const
-        {
-            os << "[";
-            format_range(os, *this, [&](std::ostream& s, const auto& it) { it.format(s, mode); });
-            os << "]";
-        }
-
-        friend std::ostream& operator<<(std::ostream& os, const vector_t& item)
-        {
-            item.format(os, format_mode_t::repr);
-            return os;
-        }
-    };
-
-    struct set_t : public std::set<value_t>
-    {
-        using base_t = std::set<value_t>;
-        using base_t::base_t;
-
-        void format(std::ostream& os, format_mode_t mode) const
-        {
-            os << "#{";
-            format_range(os, *this, [&](std::ostream& s, const auto& it) { it.format(s, mode); });
-            os << "}";
-        }
-
-        friend std::ostream& operator<<(std::ostream& os, const set_t& item)
-        {
-            item.format(os, format_mode_t::repr);
-            return os;
-        }
-    };
-
-    struct map_t : public std::map<value_t, value_t>
-    {
-        using base_t = std::map<value_t, value_t>;
-        using base_t::base_t;
-
-        void format(std::ostream& os, format_mode_t mode) const
-        {
-            os << "{";
-            format_range(
-                os,
-                *this,
-                [&](std::ostream& s, const auto& it)
-                {
-                    it.first.format(s, mode);
-                    s << " ";
-                    it.second.format(s, mode);
-                });
-            os << "}";
-        }
-
-        friend std::ostream& operator<<(std::ostream& os, const map_t& item)
-        {
-            item.format(os, format_mode_t::repr);
-            return os;
-        }
     };
 
     static bool to_boolean(const value_t& v)
@@ -890,11 +892,13 @@ struct value_t
     }
 };
 
+using callable_t = value_t::callable_t;
+
 using string_view = span<char>;
 
 struct stack_t
 {
-    using frame_type = std::map<value_t::symbol_t, value_t>;
+    using frame_type = std::map<symbol_t, value_t>;
     frame_type frame;
     stack_t* outer;
 
@@ -906,13 +910,13 @@ struct stack_t
     {
     }
 
-    const value_t& insert(const value_t::symbol_t& symbol, const value_t& v)
+    const value_t& insert(const symbol_t& symbol, const value_t& v)
     {
         frame.emplace(symbol, v);
         return v;
     }
 
-    const value_t& get(const value_t::symbol_t& symbol) const
+    const value_t& get(const symbol_t& symbol) const
     {
         const auto iter = frame.find(symbol);
         if (iter != frame.end())
@@ -927,7 +931,7 @@ struct stack_t
         throw exception<>("Unrecognized symbol `", symbol, "`");
     }
 
-    const value_t& operator[](const value_t::symbol_t& symbol) const
+    const value_t& operator[](const symbol_t& symbol) const
     {
         return get(symbol);
     }
@@ -1053,8 +1057,8 @@ struct parse_fn
         {
             return values.at(0);
         }
-        value_t::list_t result;
-        result.push_back(value_t::symbol_t{ "do" });
+        list_t result;
+        result.push_back(symbol_t{ "do" });
         result.insert(result.end(), values.begin(), values.end());
         return result;
     }
@@ -1082,57 +1086,57 @@ private:
         return ss ? std::optional<T>{ std::move(res) } : std::optional<T>{};
     }
 
-    static auto as_string(const token_t& tok) -> std::optional<value_t::string_t>
+    static auto as_string(const token_t& tok) -> std::optional<string_t>
     {
         if (tok.front() == '\"' && tok.back() == '\"')
         {
-            return value_t::string_t{ tok.substr(1, tok.size() - 2).c_str() };
+            return string_t{ tok.substr(1, tok.size() - 2).c_str() };
         }
         return {};
     }
 
-    static auto as_integer(const token_t& tok) -> std::optional<value_t::integer_t>
+    static auto as_integer(const token_t& tok) -> std::optional<integer_t>
     {
         if (std::find(tok.begin(), tok.end(), '.') == tok.end())
         {
-            return try_parse<value_t::integer_t>(tok);
+            return try_parse<integer_t>(tok);
         }
         return {};
     }
 
-    static auto as_floating_point(const token_t& tok) -> std::optional<value_t::floating_point_t>
+    static auto as_floating_point(const token_t& tok) -> std::optional<floating_point_t>
     {
-        return try_parse<value_t::floating_point_t>(tok);
+        return try_parse<floating_point_t>(tok);
     }
 
-    static auto as_boolean(const token_t& tok) -> std::optional<value_t::boolean_t>
+    static auto as_boolean(const token_t& tok) -> std::optional<boolean_t>
     {
         if (tok == "true")
         {
-            return value_t::boolean_t{ true };
+            return boolean_t{ true };
         }
         if (tok == "false")
         {
-            return value_t::boolean_t{ false };
+            return boolean_t{ false };
         }
         return {};
     }
 
-    static auto as_nil(const token_t& tok) -> std::optional<value_t::nil_t>
+    static auto as_nil(const token_t& tok) -> std::optional<nil_t>
     {
         if (tok == "nil")
         {
-            return value_t::nil_t{};
+            return nil_t{};
         }
         return {};
     }
 
-    static auto as_symbol(const token_t& tok) -> std::optional<value_t::symbol_t>
+    static auto as_symbol(const token_t& tok) -> std::optional<symbol_t>
     {
-        return value_t::symbol_t{ tok.c_str() };
+        return symbol_t{ tok.c_str() };
     }
 
-    static auto as_character(const token_t& tok) -> std::optional<value_t::character_t>
+    static auto as_character(const token_t& tok) -> std::optional<character_t>
     {
         if (tok.empty() || tok[0] != '\\')
         {
@@ -1142,30 +1146,30 @@ private:
         {
             if (tok.substr(1) == name)
             {
-                return value_t::character_t{ symbol };
+                return character_t{ symbol };
             }
         }
         if (tok.size() == 2 && std::isprint(tok[1]))
         {
-            return value_t::character_t{ tok[1] };
+            return character_t{ tok[1] };
         }
         return {};
     }
 
-    static auto as_keyword(const token_t& tok) -> std::optional<value_t::keyword_t>
+    static auto as_keyword(const token_t& tok) -> std::optional<keyword_t>
     {
         if (tok[0] == ':')
         {
-            return value_t::keyword_t{ tok.substr(1).c_str() };
+            return keyword_t{ tok.substr(1).c_str() };
         }
         return {};
     }
 
-    static auto as_tagged(const token_t& tok) -> std::optional<value_t::tagged_element_t>
+    static auto as_tagged(const token_t& tok) -> std::optional<tagged_element_t>
     {
         if (tok[0] == '#')
         {
-            return value_t::tagged_element_t{ tok.substr(1).c_str() };
+            return tagged_element_t{ tok.substr(1).c_str() };
         }
         return {};
     }
@@ -1207,9 +1211,9 @@ private:
         throw exception<>("Unrecognized token `", tok, "`");
     }
 
-    static auto to_map(const std::vector<value_t>& items) -> value_t::map_t
+    static auto to_map(const std::vector<value_t>& items) -> map_t
     {
-        auto result = value_t::map_t();
+        auto result = map_t();
         for (std::size_t i = 0; i < items.size(); i += 2)
         {
             result.emplace(items[i + 0], items[i + 1]);
@@ -1243,28 +1247,28 @@ private:
         if (front == "'")
         {
             auto arg = read_from(tokens);
-            return value_t::list_t{ value_t::symbol_t{ "quote" }, std::move(arg) };
+            return list_t{ symbol_t{ "quote" }, std::move(arg) };
         }
         if (front == "(")
         {
             const auto items = read_until(tokens, ")");
-            return value_t::list_t{ items.begin(), items.end() };
+            return list_t{ items.begin(), items.end() };
         }
         else if (front == "[")
         {
             const auto items = read_until(tokens, "]");
-            return value_t::vector_t{ items.begin(), items.end() };
+            return vector_t{ items.begin(), items.end() };
         }
         else if (front == "#")
         {
             auto rest = read_from(tokens, true);
             if (const auto v = rest.if_vector())
             {
-                return value_t::set_t(v->begin(), v->end());
+                return set_t(v->begin(), v->end());
             }
             else if (const auto v = rest.if_symbol())
             {
-                return value_t::tagged_element_t{ v->begin(), v->end() };
+                return tagged_element_t{ v->begin(), v->end() };
             }
             else
             {
@@ -1280,7 +1284,7 @@ private:
             }
             else
             {
-                return value_t::vector_t{ items.begin(), items.end() };
+                return vector_t{ items.begin(), items.end() };
             }
         }
         return read_atom(front);
@@ -1314,15 +1318,15 @@ private:
             value_t parameters;
             std::vector<value_t> body;
 
-            auto params() const -> std::tuple<std::vector<value_t::symbol_t>, std::optional<value_t::symbol_t>>
+            auto params() const -> std::tuple<std::vector<symbol_t>, std::optional<symbol_t>>
             {
-                std::vector<value_t::symbol_t> mandatory;
-                std::vector<value_t::symbol_t> variadic;
-                std::vector<value_t::symbol_t>* current = &mandatory;
+                std::vector<symbol_t> mandatory;
+                std::vector<symbol_t> variadic;
+                std::vector<symbol_t>* current = &mandatory;
                 for (const value_t& v : deref(parameters.if_vector(), "vector required"))
                 {
-                    const value_t::symbol_t& s = deref(v.if_symbol(), "symbol required");
-                    if (s == value_t::symbol_t{ "&" })
+                    const symbol_t& s = deref(v.if_symbol(), "symbol required");
+                    if (s == symbol_t{ "&" })
                     {
                         current = &variadic;
                     }
@@ -1332,8 +1336,7 @@ private:
                     }
                 }
                 return { std::move(mandatory),
-                         !variadic.empty() ? std::optional<value_t::symbol_t>{ variadic.at(0) }
-                                           : std::optional<value_t::symbol_t>{} };
+                         !variadic.empty() ? std::optional<symbol_t>{ variadic.at(0) } : std::optional<symbol_t>{} };
             }
         };
 
@@ -1359,7 +1362,7 @@ private:
                 }
                 if (args.size() > mandatory.size() && variadic)
                 {
-                    value_t::list_t tail;
+                    list_t tail;
                     for (std::size_t i = 0; i < args.size(); ++i)
                     {
                         if (i < mandatory.size())
@@ -1415,7 +1418,7 @@ private:
         throw exception<>("callable: vector required");
     }
 
-    auto eval_callable(span<value_t> input, stack_t& stack) const -> value_t::callable_t
+    auto eval_callable(span<value_t> input, stack_t& stack) const -> callable_t
     {
         std::vector<clojure_t::overload_t> overloads;
         if (std::all_of(input.begin(), input.end(), [](const value_t& v) { return v.if_list(); }))
@@ -1429,7 +1432,7 @@ private:
         {
             overloads.push_back(create_overload(input));
         }
-        return value_t::callable_t{ clojure_t{ *this, std::move(overloads), stack } };
+        return callable_t{ clojure_t{ *this, std::move(overloads), stack } };
     }
 
     auto eval_fn(span<value_t> input, stack_t& stack) const -> value_t
@@ -1456,7 +1459,7 @@ private:
     {
         for (std::size_t i = 0; i < input.size(); i += 2)
         {
-            if (input.at(i + 0) == value_t::keyword_t{ "else" } || eval_boolean(input.at(i + 0), stack))
+            if (input.at(i + 0) == keyword_t{ "else" } || eval_boolean(input.at(i + 0), stack))
             {
                 return do_eval(input.at(i + 1), stack);
             }
@@ -1466,8 +1469,8 @@ private:
 
     auto eval_callable(const value_t& head, span<value_t> tail, stack_t& stack) const -> value_t
     {
-        // const value_t::callable_t callable = deref(do_eval(head, stack).if_callable(), "callable expected");
-        const value_t::callable_t callable = do_eval(head, stack).as_callable();
+        // const callable_t callable = deref(do_eval(head, stack).if_callable(), "callable expected");
+        const callable_t callable = do_eval(head, stack).as_callable();
         std::vector<value_t> args;
         args.reserve(tail.size());
         std::transform(
@@ -1484,7 +1487,7 @@ private:
             [&](const value_t&, const value_t& item) -> value_t { return do_eval(item, stack); });
     }
 
-    auto eval_list(const value_t::list_t& input, stack_t& stack) const -> value_t
+    auto eval_list(const list_t& input, stack_t& stack) const -> value_t
     {
         if (input.empty())
         {
@@ -1492,44 +1495,44 @@ private:
         }
         const value_t& head = input.at(0);
         const auto tail = span<value_t>{ input }.slice(1, {});
-        if (head == value_t::symbol_t{ "quote" })
+        if (head == symbol_t{ "quote" })
         {
             return tail[0];
         }
-        if (head == value_t::symbol_t{ "let" })
+        if (head == symbol_t{ "let" })
         {
             return eval_let(tail, stack);
         }
-        if (head == value_t::symbol_t{ "def" })
+        if (head == symbol_t{ "def" })
         {
             return eval_def(tail, stack);
         }
-        if (head == value_t::symbol_t{ "fn" })
+        if (head == symbol_t{ "fn" })
         {
             return eval_fn(tail, stack);
         }
-        if (head == value_t::symbol_t{ "defn" })
+        if (head == symbol_t{ "defn" })
         {
             return eval_defn(tail, stack);
         }
-        if (head == value_t::symbol_t{ "if" })
+        if (head == symbol_t{ "if" })
         {
             return eval_if(tail, stack);
         }
-        if (head == value_t::symbol_t{ "cond" })
+        if (head == symbol_t{ "cond" })
         {
             return eval_cond(tail, stack);
         }
-        if (head == value_t::symbol_t{ "do" })
+        if (head == symbol_t{ "do" })
         {
             return eval_do(tail, stack);
         }
         return eval_callable(head, tail, stack);
     }
 
-    auto eval_vector(const value_t::vector_t& input, stack_t& stack) const -> value_t::vector_t
+    auto eval_vector(const vector_t& input, stack_t& stack) const -> vector_t
     {
-        value_t::vector_t output;
+        vector_t output;
         output.reserve(input.size());
         std::transform(
             input.begin(),
@@ -1540,9 +1543,9 @@ private:
         return output;
     }
 
-    auto eval_set(const value_t::set_t& input, stack_t& stack) const -> value_t::set_t
+    auto eval_set(const set_t& input, stack_t& stack) const -> set_t
     {
-        value_t::set_t output;
+        set_t output;
         std::transform(
             input.begin(),
             input.end(),
@@ -1552,9 +1555,9 @@ private:
         return output;
     }
 
-    auto eval_map(const value_t::map_t& input, stack_t& stack) const -> value_t::map_t
+    auto eval_map(const map_t& input, stack_t& stack) const -> map_t
     {
-        value_t::map_t output;
+        map_t output;
         for (const auto& [k, v] : input)
         {
             output.emplace(do_eval(k, stack), do_eval(v, stack));
