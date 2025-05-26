@@ -534,69 +534,75 @@ struct value_t
         return m_type == type_t::nil;
     }
 
+    template <class T>
+    auto get_if(type_t t, T value_t::*field) const -> const T*
+    {
+        return m_type == t ? &(this->*field) : nullptr;
+    }
+
     auto if_boolean() const -> const boolean_t*
     {
-        return m_type == type_t::boolean ? &m_boolean : nullptr;
+        return get_if<boolean_t>(type_t::boolean, &value_t::m_boolean);
     }
 
     auto if_integer() const -> const integer_t*
     {
-        return m_type == type_t::integer ? &m_integer : nullptr;
+        return get_if<integer_t>(type_t::integer, &value_t::m_integer);
     }
 
     auto if_floating_point() const -> const floating_point_t*
     {
-        return m_type == type_t::floating_point ? &m_floating_point : nullptr;
+        return get_if<floating_point_t>(type_t::floating_point, &value_t::m_floating_point);
     }
 
     auto if_string() const -> const string_t*
     {
-        return m_type == type_t::string ? &m_string : nullptr;
+        return get_if<string_t>(type_t::string, &value_t::m_string);
     }
 
     auto if_character() const -> const character_t*
     {
-        return m_type == type_t::character ? &m_character : nullptr;
+        return get_if<character_t>(type_t::character, &value_t::m_character);
     }
 
     auto if_symbol() const -> const symbol_t*
     {
-        return m_type == type_t::symbol ? &m_symbol : nullptr;
+        return get_if<symbol_t>(type_t::symbol, &value_t::m_symbol);
     }
 
     auto if_keyword() const -> const keyword_t*
     {
-        return m_type == type_t::keyword ? &m_keyword : nullptr;
+        return get_if<keyword_t>(type_t::keyword, &value_t::m_keyword);
     }
 
     auto if_tagged_element() const -> const tagged_element_t*
     {
-        return m_type == type_t::tagged_element ? &m_tagged_element : nullptr;
+        return get_if<tagged_element_t>(type_t::tagged_element, &value_t::m_tagged_element);
     }
 
     auto if_list() const -> const list_t*
     {
-        return m_type == type_t::list ? &m_list : nullptr;
+        return get_if<list_t>(type_t::list, &value_t::m_list);
     }
 
     auto if_vector() const -> const vector_t*
     {
-        return m_type == type_t::vector ? &m_vector : nullptr;
+        return get_if<vector_t>(type_t::vector, &value_t::m_vector);
     }
 
     auto if_set() const -> const set_t*
     {
-        return m_type == type_t::set ? &m_set : nullptr;
+        return get_if<set_t>(type_t::set, &value_t::m_set);
     }
 
     auto if_map() const -> const map_t*
     {
-        return m_type == type_t::map ? &m_map : nullptr;
+        return get_if<map_t>(type_t::map, &value_t::m_map);
     }
 
     auto if_callable() const -> const callable_t*
     {
-        return m_type == type_t::callable ? &m_callable : nullptr;
+        return get_if<callable_t>(type_t::callable, &value_t::m_callable);
     }
 
     auto as_callable() const -> const callable_t&
@@ -604,7 +610,7 @@ struct value_t
         const auto res = if_callable();
         if (!res)
         {
-            throw exception<>("callable expected, got ", *this, " [", m_type, "]");
+            throw exception<>("callable expected, got ", *this, " [", type(), "]");
         }
         return *res;
     }

@@ -1,7 +1,6 @@
 #include <edn.hpp>
 #include <iostream>
 #include <memory>
-#include <variant>
 
 auto to_span(const edn::value_t& arg) -> edn::span<edn::value_t>
 {
@@ -164,119 +163,6 @@ struct binary_op
     }
 };
 
-template <class... Ts>
-struct overloaded : Ts...
-{
-    using Ts::operator()...;
-};
-
-template <class... Ts>
-overloaded(Ts...) -> overloaded<Ts...>;
-
-template <class T>
-struct box
-{
-    std::unique_ptr<T> m_ptr;
-
-    box() = delete;
-
-    box(T value) : m_ptr(std::make_unique<T>(std::move(value)))
-    {
-    }
-
-    box(const box& other) : box(other.get())
-    {
-    }
-
-    box(box&&) noexcept = default;
-
-    box& operator=(box other)
-    {
-        std::swap(m_ptr, other.m_ptr);
-        return *this;
-    }
-
-    T& get()
-    {
-        return *m_ptr;
-    }
-
-    const T& get() const
-    {
-        return *m_ptr;
-    }
-
-    operator T&()
-    {
-        return get();
-    }
-
-    operator const T&() const
-    {
-        return get();
-    }
-};
-
-template <class T>
-struct node_base : public std::variant<T, box<std::vector<node_base<T>>>>
-{
-    using atom_type = T;
-    using list_type = std::vector<node_base<T>>;
-    using base_t = std::variant<T, box<std::vector<node_base<T>>>>;
-    using base_t::base_t;
-
-    const atom_type* if_atom() const
-    {
-        return std::get_if<atom_type>(this);
-    }
-
-    const list_type* if_list() const
-    {
-        const auto res = std::get_if<box<std::vector<node_base<T>>>>(this);
-        return res ? &res->get() : nullptr;
-    }
-
-    void print(std::ostream& os, int level) const
-    {
-        if (const auto v = this->if_atom())
-        {
-            os << std::string(level * 2, ' ');
-            os << *v;
-        }
-        if (const auto v = this->if_list())
-        {
-            os << std::string(level * 2, ' ');
-            os << "[";
-            os << "\n";
-            for (std::size_t i = 0; i < v->size(); ++i)
-            {
-                v->at(i).print(os, level + 1);
-                os << "\n";
-            }
-            os << std::string(level * 2, ' ') << "]";
-        }
-    }
-
-    friend std::ostream& operator<<(std::ostream& os, const node_base& item)
-    {
-        std::visit(
-            overloaded{
-                [&](const atom_type& v) { os << v; },
-                [&](const list_type& v)
-                {
-                    os << "[";
-                    for (const auto& it : v)
-                    {
-                        os << " " << it;
-                    }
-                    os << "]";
-                },
-            },
-            item);
-        return os;
-    }
-};
-
 void run()
 {
     auto stack = std::invoke(
@@ -328,18 +214,6 @@ void run()
 
         (print ">>> " ''(+ 2 3))
     )");
-
-    using node = node_base<std::string>;
-    using list = node::list_type;
-
-    node e = list{ "all",
-                   list{ list{ "field", "first-name", list{ "eq", "Adam" } },
-                         list{ "field", "last-name", list{ "eq", "Mickiewicz" } },
-                         list{ "field", "birth", list{ "eq", "1798" } } } };
-
-    e.print(std::cout, 0);
-
-    std::cout << e << "\n";
 
     std::cout << "expr: " << value << "\n\n";
     const auto result = edn::evaluate(value, stack);
