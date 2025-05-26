@@ -534,12 +534,14 @@ struct value_t
         return m_type == type_t::nil;
     }
 
+private:
     template <class T>
     auto get_if(type_t t, T value_t::*field) const -> const T*
     {
         return m_type == t ? &(this->*field) : nullptr;
     }
 
+public:
     auto if_boolean() const -> const boolean_t*
     {
         return get_if<boolean_t>(type_t::boolean, &value_t::m_boolean);
@@ -615,6 +617,7 @@ struct value_t
         return *res;
     }
 
+private:
     template <class T>
     static void destroy(T& item)
     {
@@ -633,6 +636,7 @@ struct value_t
         std::allocator<T>{}.construct(&(out.*field), std::move(in.*field));
     }
 
+public:
     value_t(const value_t& other) : m_type(other.m_type)
     {
         switch (m_type)
@@ -825,62 +829,8 @@ struct value_t
         return os;
     }
 
-    friend bool operator==(const value_t& lhs, const value_t& rhs)
-    {
-        if (lhs.m_type != rhs.m_type)
-        {
-            return false;
-        }
-
-        switch (lhs.m_type)
-        {
-            case type_t::nil: return true;
-            case type_t::boolean: return lhs.m_boolean == rhs.m_boolean;
-            case type_t::integer: return lhs.m_integer == rhs.m_integer;
-            case type_t::floating_point:
-                return std::abs(lhs.m_floating_point - rhs.m_floating_point)
-                       < std::numeric_limits<floating_point_t>::epsilon();
-            case type_t::string: return lhs.m_string == rhs.m_string;
-            case type_t::character: return lhs.m_character == rhs.m_character;
-            case type_t::symbol: return lhs.m_symbol == rhs.m_symbol;
-            case type_t::keyword: return lhs.m_keyword == rhs.m_keyword;
-            case type_t::tagged_element: return lhs.m_tagged_element == rhs.m_tagged_element;
-            case type_t::list: return lhs.m_list == rhs.m_list;
-            case type_t::vector: return lhs.m_vector == rhs.m_vector;
-            case type_t::set: return lhs.m_set == rhs.m_set;
-            case type_t::map: return lhs.m_map == rhs.m_map;
-            case type_t::callable: return false;
-            default: break;
-        }
-        return false;
-    }
-
-    friend bool operator<(const value_t& lhs, const value_t& rhs)
-    {
-        if (lhs.m_type == rhs.m_type)
-        {
-            switch (lhs.m_type)
-            {
-                case type_t::nil: return false;
-                case type_t::boolean: return lhs.m_boolean < rhs.m_boolean;
-                case type_t::integer: return lhs.m_integer < rhs.m_integer;
-                case type_t::floating_point: return lhs.m_floating_point < rhs.m_floating_point;
-                case type_t::string: return lhs.m_string < rhs.m_string;
-                case type_t::character: return lhs.m_character < rhs.m_character;
-                case type_t::symbol: return lhs.m_symbol < rhs.m_symbol;
-                case type_t::keyword: return lhs.m_keyword < rhs.m_keyword;
-                case type_t::tagged_element: return lhs.m_tagged_element < rhs.m_tagged_element;
-                case type_t::list: return lhs.m_list < rhs.m_list;
-                case type_t::vector: return lhs.m_vector < rhs.m_vector;
-                case type_t::set: return lhs.m_set < rhs.m_set;
-                case type_t::map: return lhs.m_map < rhs.m_map;
-                case type_t::callable: return false;
-                default: break;
-            }
-            return true;
-        }
-        return lhs.m_type < rhs.m_type;
-    }
+    friend bool operator==(const value_t& lhs, const value_t& rhs);
+    friend bool operator<(const value_t& lhs, const value_t& rhs);
 
     friend bool operator>(const value_t& lhs, const value_t& rhs)
     {
@@ -897,6 +847,62 @@ struct value_t
         return !(lhs < rhs);
     }
 };
+
+inline bool operator==(const value_t& lhs, const value_t& rhs)
+{
+    if (lhs.m_type != rhs.m_type)
+    {
+        return false;
+    }
+
+    switch (lhs.m_type)
+    {
+        case type_t::nil: return true;
+        case type_t::boolean: return lhs.m_boolean == rhs.m_boolean;
+        case type_t::integer: return lhs.m_integer == rhs.m_integer;
+        case type_t::floating_point:
+            return std::abs(lhs.m_floating_point - rhs.m_floating_point) < std::numeric_limits<floating_point_t>::epsilon();
+        case type_t::string: return lhs.m_string == rhs.m_string;
+        case type_t::character: return lhs.m_character == rhs.m_character;
+        case type_t::symbol: return lhs.m_symbol == rhs.m_symbol;
+        case type_t::keyword: return lhs.m_keyword == rhs.m_keyword;
+        case type_t::tagged_element: return lhs.m_tagged_element == rhs.m_tagged_element;
+        case type_t::list: return lhs.m_list == rhs.m_list;
+        case type_t::vector: return lhs.m_vector == rhs.m_vector;
+        case type_t::set: return lhs.m_set == rhs.m_set;
+        case type_t::map: return lhs.m_map == rhs.m_map;
+        case type_t::callable: return false;
+        default: break;
+    }
+    return false;
+}
+
+inline bool operator<(const value_t& lhs, const value_t& rhs)
+{
+    if (lhs.m_type == rhs.m_type)
+    {
+        switch (lhs.m_type)
+        {
+            case type_t::nil: return false;
+            case type_t::boolean: return lhs.m_boolean < rhs.m_boolean;
+            case type_t::integer: return lhs.m_integer < rhs.m_integer;
+            case type_t::floating_point: return lhs.m_floating_point < rhs.m_floating_point;
+            case type_t::string: return lhs.m_string < rhs.m_string;
+            case type_t::character: return lhs.m_character < rhs.m_character;
+            case type_t::symbol: return lhs.m_symbol < rhs.m_symbol;
+            case type_t::keyword: return lhs.m_keyword < rhs.m_keyword;
+            case type_t::tagged_element: return lhs.m_tagged_element < rhs.m_tagged_element;
+            case type_t::list: return lhs.m_list < rhs.m_list;
+            case type_t::vector: return lhs.m_vector < rhs.m_vector;
+            case type_t::set: return lhs.m_set < rhs.m_set;
+            case type_t::map: return lhs.m_map < rhs.m_map;
+            case type_t::callable: return false;
+            default: break;
+        }
+        return true;
+    }
+    return lhs.m_type < rhs.m_type;
+}
 
 using callable_t = value_t::callable_t;
 
