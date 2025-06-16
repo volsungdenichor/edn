@@ -9,7 +9,7 @@ auto to_span(const edn::value_t& arg) -> edn::span<edn::value_t>
 
 auto type(edn::span<edn::value_t> args) -> edn::value_t
 {
-    switch (args.at(0).type())
+    switch (edn::type(args.at(0)))
     {
 #define CASE(x) \
     case edn::type_t::x: return edn::keyword_t{ #x }
@@ -36,7 +36,7 @@ auto print(edn::span<edn::value_t> args) -> edn::value_t
 {
     for (const edn::value_t& arg : args)
     {
-        arg.format(std::cout, edn::format_mode_t::str);
+        std::cout << arg;
     }
     std::cout << std::endl;
     return {};
@@ -46,7 +46,7 @@ auto debug(edn::span<edn::value_t> args) -> edn::value_t
 {
     for (const edn::value_t& arg : args)
     {
-        arg.format(std::cout, edn::format_mode_t::repr);
+        std::cout << arg;
     }
     std::cout << std::endl;
     return {};
@@ -54,7 +54,7 @@ auto debug(edn::span<edn::value_t> args) -> edn::value_t
 
 auto odd_qm(edn::span<edn::value_t> args) -> edn::value_t
 {
-    if (const auto v = args.at(0).if_integer())
+    if (const auto v = std::get_if<edn::integer_t>(&args.at(0)))
     {
         return *v % 2 != 0;
     }
@@ -64,16 +64,16 @@ auto odd_qm(edn::span<edn::value_t> args) -> edn::value_t
 auto map(edn::span<edn::value_t> args) -> edn::value_t
 {
     edn::list_t result;
-    if (const auto callable = args.at(0).if_callable())
+    if (const auto callable = std::get_if<edn::callable_t>(&args.at(0)))
     {
-        if (const auto v = args.at(1).if_vector())
+        if (const auto v = std::get_if<edn::vector_t>(&args.at(1)))
         {
             for (const edn::value_t& item : *v)
             {
                 result.push_back((*callable)(to_span(item)));
             }
         }
-        if (const auto v = args.at(1).if_list())
+        if (const auto v = std::get_if<edn::list_t>(&args.at(1)))
         {
             for (const edn::value_t& item : *v)
             {
@@ -87,9 +87,9 @@ auto map(edn::span<edn::value_t> args) -> edn::value_t
 auto filter(edn::span<edn::value_t> args) -> edn::value_t
 {
     edn::list_t result;
-    if (const auto callable = args.at(0).if_callable())
+    if (const auto callable = std::get_if<edn::callable_t>(&args.at(0)))
     {
-        if (const auto v = args.at(1).if_vector())
+        if (const auto v = std::get_if<edn::vector_t>(&args.at(1)))
         {
             for (const edn::value_t& item : *v)
             {
@@ -99,7 +99,7 @@ auto filter(edn::span<edn::value_t> args) -> edn::value_t
                 }
             }
         }
-        if (const auto v = args.at(1).if_list())
+        if (const auto v = std::get_if<edn::list_t>(&args.at(1)))
         {
             for (const edn::value_t& item : *v)
             {
@@ -124,8 +124,8 @@ struct binary_op
         }
         static const auto op = Op{};
         {
-            const auto lhs = args.at(0).if_integer();
-            const auto rhs = args.at(1).if_integer();
+            const auto lhs = std::get_if<edn::integer_t>(&args.at(0));
+            const auto rhs = std::get_if<edn::integer_t>(&args.at(1));
             if (lhs && rhs)
             {
                 return op(*lhs, *rhs);
@@ -133,8 +133,8 @@ struct binary_op
         }
 
         {
-            const auto lhs = args.at(0).if_floating_point();
-            const auto rhs = args.at(1).if_integer();
+            const auto lhs = std::get_if<edn::floating_point_t>(&args.at(0));
+            const auto rhs = std::get_if<edn::integer_t>(&args.at(1));
             if (lhs && rhs)
             {
                 return op(*lhs, *rhs);
@@ -142,8 +142,8 @@ struct binary_op
         }
 
         {
-            const auto lhs = args.at(0).if_integer();
-            const auto rhs = args.at(1).if_floating_point();
+            const auto lhs = std::get_if<edn::integer_t>(&args.at(0));
+            const auto rhs = std::get_if<edn::floating_point_t>(&args.at(1));
             if (lhs && rhs)
             {
                 return op(*lhs, *rhs);
@@ -151,8 +151,8 @@ struct binary_op
         }
 
         {
-            const auto lhs = args.at(0).if_floating_point();
-            const auto rhs = args.at(1).if_floating_point();
+            const auto lhs = std::get_if<edn::floating_point_t>(&args.at(0));
+            const auto rhs = std::get_if<edn::floating_point_t>(&args.at(1));
             if (lhs && rhs)
             {
                 return op(*lhs, *rhs);
@@ -195,7 +195,7 @@ void run()
 
     const edn::value_t value = edn::parse(R"(
 
-        (println '(all [(field "first-name" (eq "Adam")) (field "last-name" (eq "Mickiewicz") ) ]))
+        (println '(and [(field "first-name" (eq "Adam")) (field "last-name" (eq "Mickiewicz") ) ]))
 
         (defn get_info [x] {:value x :type (type x)})
         (print (get_info true))
@@ -213,6 +213,7 @@ void run()
         (print (get_info [:A :B :C]))
 
         (print ">>> " ''(+ 2 3))
+        (+ 53 (* 2 3))
     )");
 
     std::cout << "expr: " << value << "\n\n";

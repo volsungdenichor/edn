@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <cstring>
 #include <functional>
+#include <iomanip>
 #include <iostream>
 #include <iterator>
 #include <limits>
@@ -15,6 +16,7 @@
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <variant>
 #include <vector>
 
 namespace edn
@@ -80,6 +82,15 @@ auto exception(Args&&... args) -> E
 {
     return E{ str(std::forward<Args>(args)...) };
 }
+
+template <class... Ts>
+struct overloaded : Ts...
+{
+    using Ts::operator()...;
+};
+
+template <class... Ts>
+overloaded(Ts...) -> overloaded<Ts...>;
 
 template <class T>
 class span
@@ -236,182 +247,52 @@ static void format_range(std::ostream& os, Range&& range, Fmt&& fmt)
     }
 }
 
-enum class format_mode_t
+template <class Range>
+static void format_range(std::ostream& os, Range&& range)
 {
-    str,
-    repr
-};
-
-struct value_t;
-
-struct nil_t
-{
-    void format(std::ostream& os, format_mode_t mode) const
+    const auto b = std::begin(range);
+    const auto e = std::end(range);
+    for (auto it = b; it != e; ++it)
     {
-        os << "nil";
+        if (it != b)
+        {
+            os << " ";
+        }
+        os << *it;
     }
-
-    friend std::ostream& operator<<(std::ostream& os, const nil_t& item)
-    {
-        item.format(os, format_mode_t::repr);
-        return os;
-    }
-};
+}
 
 using boolean_t = bool;
 using integer_t = std::int32_t;
 using floating_point_t = double;
 using character_t = char;
 
-struct string_t : public std::string
-{
-    using base_t = std::string;
-    using base_t::base_t;
+struct nil_t;
+struct list_t;
+struct vector_t;
+struct set_t;
+struct map_t;
+struct callable_t;
+struct string_t;
+struct symbol_t;
+struct keyword_t;
+struct tagged_element_t;
 
-    void format(std::ostream& os, format_mode_t mode) const
-    {
-        if (mode == format_mode_t::repr)
-        {
-            os << '"' << (const base_t&)(*this) << '"';
-        }
-        else
-        {
-            os << (const base_t&)(*this);
-        }
-    }
-
-    friend std::ostream& operator<<(std::ostream& os, const string_t& item)
-    {
-        item.format(os, format_mode_t::repr);
-        return os;
-    }
-};
-
-struct symbol_t : public std::string
-{
-    using base_t = std::string;
-    using base_t::base_t;
-};
-
-struct keyword_t : public std::string
-{
-    using base_t = std::string;
-    using base_t::base_t;
-
-    void format(std::ostream& os, format_mode_t mode) const
-    {
-        (void)mode;
-        os << ':' << (const base_t&)(*this);
-    }
-
-    friend std::ostream& operator<<(std::ostream& os, const keyword_t& item)
-    {
-        item.format(os, format_mode_t::repr);
-        return os;
-    }
-};
-
-struct tagged_element_t : public std::string
-{
-    using base_t = std::string;
-    using base_t::base_t;
-
-    void format(std::ostream& os, format_mode_t mode) const
-    {
-        (void)mode;
-        os << '#' << (const base_t&)(*this);
-    }
-
-    friend std::ostream& operator<<(std::ostream& os, const tagged_element_t& item)
-    {
-        item.format(os, format_mode_t::repr);
-        return os;
-    }
-};
-
-struct list_t : public std::vector<value_t>
-{
-    using base_t = std::vector<value_t>;
-    using base_t::base_t;
-
-    void format(std::ostream& os, format_mode_t mode) const
-    {
-        os << "(";
-        format_range(os, *this, [&](std::ostream& s, const auto& it) { it.format(s, mode); });
-        os << ")";
-    }
-
-    friend std::ostream& operator<<(std::ostream& os, const list_t& item)
-    {
-        item.format(os, format_mode_t::repr);
-        return os;
-    }
-};
-
-struct vector_t : public std::vector<value_t>
-{
-    using base_t = std::vector<value_t>;
-    using base_t::base_t;
-
-    void format(std::ostream& os, format_mode_t mode) const
-    {
-        os << "[";
-        format_range(os, *this, [&](std::ostream& s, const auto& it) { it.format(s, mode); });
-        os << "]";
-    }
-
-    friend std::ostream& operator<<(std::ostream& os, const vector_t& item)
-    {
-        item.format(os, format_mode_t::repr);
-        return os;
-    }
-};
-
-struct set_t : public std::set<value_t>
-{
-    using base_t = std::set<value_t>;
-    using base_t::base_t;
-
-    void format(std::ostream& os, format_mode_t mode) const
-    {
-        os << "#{";
-        format_range(os, *this, [&](std::ostream& s, const auto& it) { it.format(s, mode); });
-        os << "}";
-    }
-
-    friend std::ostream& operator<<(std::ostream& os, const set_t& item)
-    {
-        item.format(os, format_mode_t::repr);
-        return os;
-    }
-};
-
-struct map_t : public std::map<value_t, value_t>
-{
-    using base_t = std::map<value_t, value_t>;
-    using base_t::base_t;
-
-    void format(std::ostream& os, format_mode_t mode) const
-    {
-        os << "{";
-        format_range(
-            os,
-            *this,
-            [&](std::ostream& s, const auto& it)
-            {
-                it.first.format(s, mode);
-                s << " ";
-                it.second.format(s, mode);
-            });
-        os << "}";
-    }
-
-    friend std::ostream& operator<<(std::ostream& os, const map_t& item)
-    {
-        item.format(os, format_mode_t::repr);
-        return os;
-    }
-};
+using value_t = std::variant<
+    nil_t,
+    boolean_t,
+    integer_t,
+    floating_point_t,
+    string_t,
+    character_t,
+    symbol_t,
+    keyword_t,
+    tagged_element_t,
+    list_t,
+    vector_t,
+    set_t,
+    map_t,
+    callable_t>;
 
 enum class type_t
 {
@@ -456,455 +337,245 @@ inline std::ostream& operator<<(std::ostream& os, const type_t item)
     }
     return os;
 }
-
-struct value_t
+struct nil_t
 {
-    static const inline std::vector<std::tuple<char, std::string>> character_names = {
-        { ' ', "space" },
-        { '\n', "newline" },
-        { '\t', "tab" },
-    };
-
-    static bool to_boolean(const value_t& v)
+    friend std::ostream& operator<<(std::ostream& os, const nil_t&)
     {
-        if (const auto b = v.if_boolean())
-        {
-            return *b;
-        }
-        return false;
-    }
-
-    struct callable_t : public std::function<value_t(span<value_t>)>
-    {
-        using base_t = std::function<value_t(span<value_t>)>;
-        using base_t::base_t;
-
-        auto call(span<value_t> args) const -> value_t
-        {
-            return (*this)(args);
-        }
-
-        auto call(const value_t& arg) const -> value_t
-        {
-            return call(span<value_t>(&arg, 1));
-        }
-
-        bool test(span<value_t> args) const
-        {
-            return to_boolean(call(args));
-        }
-
-        bool test(const value_t& arg) const
-        {
-            return to_boolean(call(arg));
-        }
-
-        friend std::ostream& operator<<(std::ostream& os, const callable_t& item)
-        {
-            return os << "<< callable >>";
-        }
-    };
-
-    type_t type() const
-    {
-        return m_type;
-    }
-
-    type_t m_type;
-    union
-    {
-        nil_t m_nil;
-        boolean_t m_boolean;
-        integer_t m_integer;
-        floating_point_t m_floating_point;
-        string_t m_string;
-        character_t m_character;
-        symbol_t m_symbol;
-        keyword_t m_keyword;
-        tagged_element_t m_tagged_element;
-        list_t m_list;
-        vector_t m_vector;
-        set_t m_set;
-        map_t m_map;
-        callable_t m_callable;
-    };
-
-    bool is_nil() const
-    {
-        return m_type == type_t::nil;
-    }
-
-private:
-    template <class T>
-    auto get_if(type_t t, T value_t::*field) const -> const T*
-    {
-        return m_type == t ? &(this->*field) : nullptr;
-    }
-
-public:
-    auto if_boolean() const -> const boolean_t*
-    {
-        return get_if<boolean_t>(type_t::boolean, &value_t::m_boolean);
-    }
-
-    auto if_integer() const -> const integer_t*
-    {
-        return get_if<integer_t>(type_t::integer, &value_t::m_integer);
-    }
-
-    auto if_floating_point() const -> const floating_point_t*
-    {
-        return get_if<floating_point_t>(type_t::floating_point, &value_t::m_floating_point);
-    }
-
-    auto if_string() const -> const string_t*
-    {
-        return get_if<string_t>(type_t::string, &value_t::m_string);
-    }
-
-    auto if_character() const -> const character_t*
-    {
-        return get_if<character_t>(type_t::character, &value_t::m_character);
-    }
-
-    auto if_symbol() const -> const symbol_t*
-    {
-        return get_if<symbol_t>(type_t::symbol, &value_t::m_symbol);
-    }
-
-    auto if_keyword() const -> const keyword_t*
-    {
-        return get_if<keyword_t>(type_t::keyword, &value_t::m_keyword);
-    }
-
-    auto if_tagged_element() const -> const tagged_element_t*
-    {
-        return get_if<tagged_element_t>(type_t::tagged_element, &value_t::m_tagged_element);
-    }
-
-    auto if_list() const -> const list_t*
-    {
-        return get_if<list_t>(type_t::list, &value_t::m_list);
-    }
-
-    auto if_vector() const -> const vector_t*
-    {
-        return get_if<vector_t>(type_t::vector, &value_t::m_vector);
-    }
-
-    auto if_set() const -> const set_t*
-    {
-        return get_if<set_t>(type_t::set, &value_t::m_set);
-    }
-
-    auto if_map() const -> const map_t*
-    {
-        return get_if<map_t>(type_t::map, &value_t::m_map);
-    }
-
-    auto if_callable() const -> const callable_t*
-    {
-        return get_if<callable_t>(type_t::callable, &value_t::m_callable);
-    }
-
-    auto as_callable() const -> const callable_t&
-    {
-        const auto res = if_callable();
-        if (!res)
-        {
-            throw exception<>("callable expected, got ", *this, " [", type(), "]");
-        }
-        return *res;
-    }
-
-private:
-    template <class T>
-    static void destroy(T& item)
-    {
-        std::allocator<T>{}.destroy(&item);
-    }
-
-    template <class T>
-    static void copy(T value_t::*field, value_t& out, const value_t& in)
-    {
-        std::allocator<T>{}.construct(&(out.*field), in.*field);
-    }
-
-    template <class T>
-    static void move(T value_t::*field, value_t& out, value_t&& in)
-    {
-        std::allocator<T>{}.construct(&(out.*field), std::move(in.*field));
-    }
-
-public:
-    value_t(const value_t& other) : m_type(other.m_type)
-    {
-        switch (m_type)
-        {
-            case type_t::nil: copy(&value_t::m_nil, *this, other); break;
-            case type_t::boolean: copy(&value_t::m_boolean, *this, other); break;
-            case type_t::integer: copy(&value_t::m_integer, *this, other); break;
-            case type_t::floating_point: copy(&value_t::m_floating_point, *this, other); break;
-            case type_t::string: copy(&value_t::m_string, *this, other); break;
-            case type_t::character: copy(&value_t::m_character, *this, other); break;
-            case type_t::symbol: copy(&value_t::m_symbol, *this, other); break;
-            case type_t::keyword: copy(&value_t::m_keyword, *this, other); break;
-            case type_t::tagged_element: copy(&value_t::m_tagged_element, *this, other); break;
-            case type_t::list: copy(&value_t::m_list, *this, other); break;
-            case type_t::vector: copy(&value_t::m_vector, *this, other); break;
-            case type_t::set: copy(&value_t::m_set, *this, other); break;
-            case type_t::map: copy(&value_t::m_map, *this, other); break;
-            case type_t::callable: copy(&value_t::m_callable, *this, other); break;
-            default: break;
-        }
-    }
-
-    value_t(value_t&& other) noexcept : m_type(other.m_type)
-    {
-        switch (m_type)
-        {
-            case type_t::nil: move(&value_t::m_nil, *this, std::move(other)); break;
-            case type_t::boolean: move(&value_t::m_boolean, *this, std::move(other)); break;
-            case type_t::integer: move(&value_t::m_integer, *this, std::move(other)); break;
-            case type_t::floating_point: move(&value_t::m_floating_point, *this, std::move(other)); break;
-            case type_t::string: move(&value_t::m_string, *this, std::move(other)); break;
-            case type_t::character: move(&value_t::m_character, *this, std::move(other)); break;
-            case type_t::symbol: move(&value_t::m_symbol, *this, std::move(other)); break;
-            case type_t::keyword: move(&value_t::m_keyword, *this, std::move(other)); break;
-            case type_t::tagged_element: move(&value_t::m_tagged_element, *this, std::move(other)); break;
-            case type_t::list: move(&value_t::m_list, *this, std::move(other)); break;
-            case type_t::vector: move(&value_t::m_vector, *this, std::move(other)); break;
-            case type_t::set: move(&value_t::m_set, *this, std::move(other)); break;
-            case type_t::map: move(&value_t::m_map, *this, std::move(other)); break;
-            case type_t::callable: move(&value_t::m_callable, *this, std::move(other)); break;
-            default: break;
-        }
-    }
-
-    value_t& operator=(const value_t& other)
-    {
-        if (this != &other)
-        {
-            this->~value_t();
-            new (this) value_t{ other };
-        }
-        return *this;
-    }
-
-    value_t& operator=(value_t&& other)
-    {
-        if (this != &other)
-        {
-            this->~value_t();
-            new (this) value_t{ std::move(other) };
-        }
-        return *this;
-    }
-
-    value_t(nil_t v) : m_type(type_t::nil), m_nil(v)
-    {
-    }
-
-    value_t(boolean_t v) : m_type(type_t::boolean), m_boolean(v)
-    {
-    }
-
-    value_t(integer_t v) : m_type(type_t::integer), m_integer(v)
-    {
-    }
-
-    value_t(floating_point_t v) : m_type(type_t::floating_point), m_floating_point(v)
-    {
-    }
-
-    value_t(string_t v) : m_type(type_t::string), m_string(std::move(v))
-    {
-    }
-
-    value_t(character_t v) : m_type(type_t::character), m_character(v)
-    {
-    }
-
-    value_t(symbol_t v) : m_type(type_t::symbol), m_symbol(std::move(v))
-    {
-    }
-
-    value_t(const char* v) : value_t(symbol_t{ v })
-    {
-    }
-
-    value_t(keyword_t v) : m_type(type_t::keyword), m_keyword(std::move(v))
-    {
-    }
-
-    value_t(tagged_element_t v) : m_type(type_t::tagged_element), m_tagged_element(std::move(v))
-    {
-    }
-
-    value_t(list_t v) : m_type(type_t::list), m_list(std::move(v))
-    {
-    }
-
-    value_t(vector_t v) : m_type(type_t::vector), m_vector(std::move(v))
-    {
-    }
-
-    value_t(set_t v) : m_type(type_t::set), m_set(std::move(v))
-    {
-    }
-
-    value_t(map_t v) : m_type(type_t::map), m_map(std::move(v))
-    {
-    }
-
-    value_t(callable_t v) : m_type(type_t::callable), m_callable(std::move(v))
-    {
-    }
-
-    value_t() : value_t(nil_t{})
-    {
-    }
-
-    ~value_t()
-    {
-        switch (m_type)
-        {
-            case type_t::nil: destroy(m_nil); break;
-            case type_t::boolean: destroy(m_boolean); break;
-            case type_t::integer: destroy(m_integer); break;
-            case type_t::floating_point: destroy(m_floating_point); break;
-            case type_t::string: destroy(m_string); break;
-            case type_t::character: destroy(m_character); break;
-            case type_t::symbol: destroy(m_symbol); break;
-            case type_t::keyword: destroy(m_keyword); break;
-            case type_t::tagged_element: destroy(m_tagged_element); break;
-            case type_t::list: destroy(m_list); break;
-            case type_t::vector: destroy(m_vector); break;
-            case type_t::set: destroy(m_set); break;
-            case type_t::map: destroy(m_map); break;
-            case type_t::callable: destroy(m_callable); break;
-            default: break;
-        }
-    }
-
-    void format(std::ostream& os, format_mode_t mode) const
-    {
-        static const auto fmt_char = [](std::ostream& o, character_t ch)
-        {
-            o << "\\";
-            for (const auto& [symbol, name] : character_names)
-            {
-                if (symbol == ch)
-                {
-                    o << name;
-                    return;
-                }
-            }
-
-            o << ch;
-        };
-        switch (m_type)
-        {
-            case type_t::nil: m_nil.format(os, mode); return;
-            case type_t::boolean: os << (m_boolean ? "true" : "false"); return;
-            case type_t::integer: os << m_integer; return;
-            case type_t::floating_point: os << m_floating_point; return;
-            case type_t::string: m_string.format(os, mode); return;
-            case type_t::character: fmt_char(os, m_character); return;
-            case type_t::symbol: os << m_symbol; return;
-            case type_t::keyword: m_keyword.format(os, mode); return;
-            case type_t::tagged_element: m_tagged_element.format(os, mode); return;
-            case type_t::list: m_list.format(os, mode); return;
-            case type_t::vector: m_vector.format(os, mode); return;
-            case type_t::set: m_set.format(os, mode); return;
-            case type_t::map: m_map.format(os, mode); return;
-            case type_t::callable: os << m_callable; return;
-            default: break;
-        }
-    }
-
-    friend std::ostream& operator<<(std::ostream& os, const value_t& item)
-    {
-        item.format(os, format_mode_t::repr);
-        return os;
-    }
-
-    friend bool operator==(const value_t& lhs, const value_t& rhs);
-    friend bool operator<(const value_t& lhs, const value_t& rhs);
-
-    friend bool operator>(const value_t& lhs, const value_t& rhs)
-    {
-        return rhs < lhs;
-    }
-
-    friend bool operator<=(const value_t& lhs, const value_t& rhs)
-    {
-        return !(lhs > rhs);
-    }
-
-    friend bool operator>=(const value_t& lhs, const value_t& rhs)
-    {
-        return !(lhs < rhs);
+        return os << "nil";
     }
 };
 
-inline bool operator==(const value_t& lhs, const value_t& rhs)
+struct string_t : public std::string
 {
-    if (lhs.m_type != rhs.m_type)
+    using base_t = std::string;
+    using base_t::base_t;
+
+    friend std::ostream& operator<<(std::ostream& os, const string_t& item)
     {
-        return false;
+        return os << std::quoted(item);
+    }
+};
+
+struct symbol_t : public std::string
+{
+    using base_t = std::string;
+    using base_t::base_t;
+};
+
+struct keyword_t : public std::string
+{
+    using base_t = std::string;
+    using base_t::base_t;
+
+    friend std::ostream& operator<<(std::ostream& os, const keyword_t& item)
+    {
+        return os << ":" << (const base_t&)item;
+    }
+};
+
+struct tagged_element_t : public std::string
+{
+    using base_t = std::string;
+    using base_t::base_t;
+
+    friend std::ostream& operator<<(std::ostream& os, const tagged_element_t& item)
+    {
+        return os << "#" << (const base_t&)item;
+    }
+};
+
+struct list_t : public std::vector<value_t>
+{
+    using base_t = std::vector<value_t>;
+    using base_t::base_t;
+
+    friend std::ostream& operator<<(std::ostream& os, const list_t& item)
+    {
+        os << "(";
+        format_range(os, item);
+        os << ")";
+        return os;
+    }
+};
+
+struct vector_t : public std::vector<value_t>
+{
+    using base_t = std::vector<value_t>;
+    using base_t::base_t;
+
+    friend std::ostream& operator<<(std::ostream& os, const vector_t& item)
+    {
+        os << "[";
+        format_range(os, item);
+        os << "]";
+        return os;
+    }
+};
+
+struct set_t : public std::set<value_t>
+{
+    using base_t = std::set<value_t>;
+    using base_t::base_t;
+
+    friend std::ostream& operator<<(std::ostream& os, const set_t& item)
+    {
+        os << "#{";
+        format_range(os, item);
+        os << "}";
+        return os;
+    }
+};
+
+struct map_t : public std::map<value_t, value_t>
+{
+    using base_t = std::map<value_t, value_t>;
+    using base_t::base_t;
+
+    friend std::ostream& operator<<(std::ostream& os, const map_t& item)
+    {
+        os << "{";
+        format_range(os, item, [&](std::ostream& s, const auto& it) { s << it.first << " " << it.second; });
+        os << "}";
+        return os;
+    }
+};
+
+struct callable_t : public std::function<value_t(span<value_t>)>
+{
+    using base_t = std::function<value_t(span<value_t>)>;
+    using base_t::base_t;
+
+    static bool to_boolean(const value_t& value)
+    {
+        return std::visit(overloaded{ [](bool v) -> bool { return v; }, [](const auto&) -> bool { return false; } }, value);
     }
 
-    switch (lhs.m_type)
+    auto call(span<value_t> args) const -> value_t
     {
-        case type_t::nil: return true;
-        case type_t::boolean: return lhs.m_boolean == rhs.m_boolean;
-        case type_t::integer: return lhs.m_integer == rhs.m_integer;
-        case type_t::floating_point:
-            return std::abs(lhs.m_floating_point - rhs.m_floating_point) < std::numeric_limits<floating_point_t>::epsilon();
-        case type_t::string: return lhs.m_string == rhs.m_string;
-        case type_t::character: return lhs.m_character == rhs.m_character;
-        case type_t::symbol: return lhs.m_symbol == rhs.m_symbol;
-        case type_t::keyword: return lhs.m_keyword == rhs.m_keyword;
-        case type_t::tagged_element: return lhs.m_tagged_element == rhs.m_tagged_element;
-        case type_t::list: return lhs.m_list == rhs.m_list;
-        case type_t::vector: return lhs.m_vector == rhs.m_vector;
-        case type_t::set: return lhs.m_set == rhs.m_set;
-        case type_t::map: return lhs.m_map == rhs.m_map;
-        case type_t::callable: return false;
-        default: break;
+        return (*this)(args);
     }
-    return false;
+
+    auto call(const value_t& arg) const -> value_t
+    {
+        return call(span<value_t>(&arg, 1));
+    }
+
+    bool test(span<value_t> args) const
+    {
+        return to_boolean(call(args));
+    }
+
+    bool test(const value_t& arg) const
+    {
+        return to_boolean(call(arg));
+    }
+
+    friend std::ostream& operator<<(std::ostream& os, const callable_t& item)
+    {
+        return os << "<< callable >>";
+    }
+};
+
+inline type_t type(const value_t& value)
+{
+    return std::visit(
+        overloaded{
+            [](nil_t) { return type_t::nil; },
+            [](boolean_t) { return type_t::boolean; },
+            [](integer_t) { return type_t::integer; },
+            [](floating_point_t) { return type_t::floating_point; },
+            [](const string_t&) { return type_t::string; },
+            [](const symbol_t&) { return type_t::symbol; },
+            [](const keyword_t&) { return type_t::keyword; },
+            [](const tagged_element_t&) { return type_t::tagged_element; },
+            [](const list_t&) { return type_t::list; },
+            [](const vector_t&) { return type_t::vector; },
+            [](const set_t&) { return type_t::set; },
+            [](const map_t&) { return type_t::map; },
+            [](const callable_t&) { return type_t::callable; },
+        },
+        value);
+}
+
+inline std::ostream& operator<<(std::ostream& os, const value_t& item)
+{
+    std::visit(
+        overloaded{
+            [&](nil_t v) { os << v; },
+            [&](boolean_t v) { os << (v ? "true" : "false"); },
+            [&](integer_t v) { os << v; },
+            [&](floating_point_t v) { os << v; },
+            [&](const string_t& v) { os << v; },
+            [&](const symbol_t& v) { os << v; },
+            [&](const keyword_t& v) { os << v; },
+            [&](const tagged_element_t& v) { os << v; },
+            [&](const list_t& v) { os << v; },
+            [&](const vector_t& v) { os << v; },
+            [&](const set_t& v) { os << v; },
+            [&](const map_t& v) { os << v; },
+            [&](const callable_t& v) { os << v; },
+        },
+        item);
+    return os;
+}
+
+inline bool operator==(const value_t& lhs, const value_t& rhs)
+{
+    return std::visit(
+        overloaded{ [](nil_t lt, nil_t rt) { return true; },
+                    [](boolean_t lt, boolean_t rt) { return lt == rt; },
+                    [](integer_t lt, integer_t rt) { return lt == rt; },
+                    [](floating_point_t lt, floating_point_t rt)
+                    { return std::abs(lt - rt) < std::numeric_limits<floating_point_t>::epsilon(); },
+                    [](const string_t& lt, const string_t& rt) { return lt == rt; },
+                    [](const symbol_t& lt, const symbol_t& rt) { return lt == rt; },
+                    [](const keyword_t& lt, const keyword_t& rt) { return lt == rt; },
+                    [](const tagged_element_t& lt, const tagged_element_t& rt) { return lt == rt; },
+                    [](const list_t& lt, const list_t& rt) { return lt == rt; },
+                    [](const vector_t& lt, const vector_t& rt) { return lt == rt; },
+                    [](const set_t& lt, const set_t& rt) { return lt == rt; },
+                    [](const map_t& lt, const map_t& rt) { return lt == rt; },
+                    [](const callable_t& lt, const callable_t& rt) { return false; },
+                    [](const auto& lt, const auto& rt) { return false; } },
+        lhs,
+        rhs);
 }
 
 inline bool operator<(const value_t& lhs, const value_t& rhs)
 {
-    if (lhs.m_type == rhs.m_type)
-    {
-        switch (lhs.m_type)
-        {
-            case type_t::nil: return false;
-            case type_t::boolean: return lhs.m_boolean < rhs.m_boolean;
-            case type_t::integer: return lhs.m_integer < rhs.m_integer;
-            case type_t::floating_point: return lhs.m_floating_point < rhs.m_floating_point;
-            case type_t::string: return lhs.m_string < rhs.m_string;
-            case type_t::character: return lhs.m_character < rhs.m_character;
-            case type_t::symbol: return lhs.m_symbol < rhs.m_symbol;
-            case type_t::keyword: return lhs.m_keyword < rhs.m_keyword;
-            case type_t::tagged_element: return lhs.m_tagged_element < rhs.m_tagged_element;
-            case type_t::list: return lhs.m_list < rhs.m_list;
-            case type_t::vector: return lhs.m_vector < rhs.m_vector;
-            case type_t::set: return lhs.m_set < rhs.m_set;
-            case type_t::map: return lhs.m_map < rhs.m_map;
-            case type_t::callable: return false;
-            default: break;
-        }
-        return true;
-    }
-    return lhs.m_type < rhs.m_type;
+    return std::visit(
+        overloaded{ [](nil_t lt, nil_t rt) { return false; },
+                    [](boolean_t lt, boolean_t rt) { return lt < rt; },
+                    [](integer_t lt, integer_t rt) { return lt < rt; },
+                    [](floating_point_t lt, floating_point_t rt) { return lt < rt; },
+                    [](const string_t& lt, const string_t& rt) { return lt < rt; },
+                    [](const symbol_t& lt, const symbol_t& rt) { return lt < rt; },
+                    [](const keyword_t& lt, const keyword_t& rt) { return lt < rt; },
+                    [](const tagged_element_t& lt, const tagged_element_t& rt) { return lt < rt; },
+                    [](const list_t& lt, const list_t& rt) { return lt < rt; },
+                    [](const vector_t& lt, const vector_t& rt) { return lt < rt; },
+                    [](const set_t& lt, const set_t& rt) { return lt < rt; },
+                    [](const map_t& lt, const map_t& rt) { return lt < rt; },
+                    [](const callable_t& lt, const callable_t& rt) { return false; },
+                    [](const auto& lt, const auto& rt) { return true; } },
+        lhs,
+        rhs);
 }
 
-using callable_t = value_t::callable_t;
+inline bool operator>(const value_t& lhs, const value_t& rhs)
+{
+    return rhs < lhs;
+}
+
+inline bool operator<=(const value_t& lhs, const value_t& rhs)
+{
+    return !(lhs > rhs);
+}
+
+inline bool operator>=(const value_t& lhs, const value_t& rhs)
+{
+    return !(lhs < rhs);
+}
 
 using string_view = span<char>;
 
@@ -1148,13 +819,19 @@ private:
         return symbol_t{ tok.c_str() };
     }
 
+    static const inline std::vector<std::tuple<char, std::string>> character_names = {
+        { ' ', "space" },
+        { '\n', "newline" },
+        { '\t', "tab" },
+    };
+
     static auto as_character(const token_t& tok) -> std::optional<character_t>
     {
         if (tok.empty() || tok[0] != '\\')
         {
             return {};
         }
-        for (const auto& [symbol, name] : value_t::character_names)
+        for (const auto& [symbol, name] : character_names)
         {
             if (tok.substr(1) == name)
             {
@@ -1274,11 +951,11 @@ private:
         else if (front == "#")
         {
             auto rest = read_from(tokens, true);
-            if (const auto v = rest.if_vector())
+            if (const auto v = std::get_if<vector_t>(&rest))
             {
                 return set_t(v->begin(), v->end());
             }
-            else if (const auto v = rest.if_symbol())
+            else if (const auto v = std::get_if<symbol_t>(&rest))
             {
                 return tagged_element_t{ v->begin(), v->end() };
             }
@@ -1335,9 +1012,9 @@ private:
                 std::vector<symbol_t> mandatory;
                 std::vector<symbol_t> variadic;
                 std::vector<symbol_t>* current = &mandatory;
-                for (const value_t& v : deref(parameters.if_vector(), "vector required"))
+                for (const value_t& v : deref(std::get_if<vector_t>(&parameters), "vector required"))
                 {
-                    const symbol_t& s = deref(v.if_symbol(), "symbol required");
+                    const symbol_t& s = deref(std::get_if<symbol_t>(&v), "symbol required");
                     if (s == symbol_t{ "&" })
                     {
                         current = &variadic;
@@ -1406,24 +1083,25 @@ private:
 
     auto eval_let(span<value_t> input, stack_t& stack) const -> value_t
     {
-        const auto& bindings = deref(input.at(0).if_vector(), "vector expected");
+        const auto& bindings = deref(std::get_if<vector_t>(&input.at(0)), "vector expected");
         auto new_stack = stack_t{ stack_t::frame_type{}, &stack };
         for (std::size_t i = 0; i < bindings.size(); i += 2)
         {
             new_stack.insert(
-                deref(bindings.at(i + 0).if_symbol(), "symbol expected"), do_eval(bindings.at(i + 1), new_stack));
+                deref(std::get_if<symbol_t>(&bindings.at(i + 0)), "symbol expected"),
+                do_eval(bindings.at(i + 1), new_stack));
         }
         return eval_block(input.slice(1, {}), new_stack);
     }
 
     auto eval_def(span<value_t> input, stack_t& stack) const -> value_t
     {
-        return stack.insert(deref(input.at(0).if_symbol(), "symbol expected"), do_eval(input.at(1), stack));
+        return stack.insert(deref(std::get_if<symbol_t>(&input.at(0)), "symbol expected"), do_eval(input.at(1), stack));
     }
 
     static auto create_overload(span<value_t> input) -> clojure_t::overload_t
     {
-        if (input.at(0).if_vector())
+        if (std::get_if<vector_t>(&input.at(0)))
         {
             return clojure_t::overload_t{ input.at(0), input.slice(1, {}) };
         }
@@ -1433,11 +1111,11 @@ private:
     auto eval_callable(span<value_t> input, stack_t& stack) const -> callable_t
     {
         std::vector<clojure_t::overload_t> overloads;
-        if (std::all_of(input.begin(), input.end(), [](const value_t& v) { return v.if_list(); }))
+        if (std::all_of(input.begin(), input.end(), [](const value_t& v) { return std::get_if<list_t>(&v); }))
         {
             for (const value_t& v : input)
             {
-                overloads.push_back(create_overload(span<value_t>(deref(v.if_list(), "list expected"))));
+                overloads.push_back(create_overload(span<value_t>(deref(std::get_if<list_t>(&v), "list expected"))));
             }
         }
         else
@@ -1454,12 +1132,14 @@ private:
 
     auto eval_defn(span<value_t> input, stack_t& stack) const -> value_t
     {
-        return stack.insert(deref(input.at(0).if_symbol(), "symbol expected"), eval_callable(input.slice(1, {}), stack));
+        return stack.insert(
+            deref(std::get_if<symbol_t>(&input.at(0)), "symbol expected"), eval_callable(input.slice(1, {}), stack));
     }
 
     auto eval_boolean(const value_t& value, stack_t& stack) const -> bool
     {
-        return deref(do_eval(value, stack).if_boolean(), "boolean expected");
+        const value_t res = do_eval(value, stack);
+        return deref(std::get_if<boolean_t>(&res), "boolean expected");
     }
 
     auto eval_if(span<value_t> input, stack_t& stack) const -> value_t
@@ -1482,7 +1162,7 @@ private:
     auto eval_callable(const value_t& head, span<value_t> tail, stack_t& stack) const -> value_t
     {
         // const callable_t callable = deref(do_eval(head, stack).if_callable(), "callable expected");
-        const callable_t callable = do_eval(head, stack).as_callable();
+        const callable_t callable = std::get<callable_t>(do_eval(head, stack));
         std::vector<value_t> args;
         args.reserve(tail.size());
         std::transform(
@@ -1579,23 +1259,23 @@ private:
 
     auto do_eval(const value_t& value, stack_t& stack) const -> value_t
     {
-        if (const auto symbol = value.if_symbol())
+        if (const auto symbol = std::get_if<symbol_t>(&value))
         {
             return stack[*symbol];
         }
-        if (const auto list = value.if_list())
+        if (const auto list = std::get_if<list_t>(&value))
         {
             return eval_list(*list, stack);
         }
-        if (const auto vector = value.if_vector())
+        if (const auto vector = std::get_if<vector_t>(&value))
         {
             return eval_vector(*vector, stack);
         }
-        if (const auto set = value.if_set())
+        if (const auto set = std::get_if<set_t>(&value))
         {
             return eval_set(*set, stack);
         }
-        if (const auto map = value.if_map())
+        if (const auto map = std::get_if<map_t>(&value))
         {
             return eval_map(*map, stack);
         }
