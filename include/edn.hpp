@@ -148,6 +148,36 @@ static constexpr struct delimit_fn
     }
 } delimit;
 
+template <class Range, class Fmt>
+static void format_range(std::ostream& os, Range&& range, Fmt&& fmt)
+{
+    const auto b = std::begin(range);
+    const auto e = std::end(range);
+    for (auto it = b; it != e; ++it)
+    {
+        if (it != b)
+        {
+            os << " ";
+        }
+        fmt(os, *it);
+    }
+}
+
+template <class Range>
+static void format_range(std::ostream& os, Range&& range)
+{
+    const auto b = std::begin(range);
+    const auto e = std::end(range);
+    for (auto it = b; it != e; ++it)
+    {
+        if (it != b)
+        {
+            os << " ";
+        }
+        os << *it;
+    }
+}
+
 }  // namespace detail
 
 using detail::delimit;
@@ -308,35 +338,6 @@ public:
     }
 };
 
-template <class Range, class Fmt>
-static void format_range(std::ostream& os, Range&& range, Fmt&& fmt)
-{
-    const auto b = std::begin(range);
-    const auto e = std::end(range);
-    for (auto it = b; it != e; ++it)
-    {
-        if (it != b)
-        {
-            os << " ";
-        }
-        fmt(os, *it);
-    }
-}
-
-template <class Range>
-static void format_range(std::ostream& os, Range&& range)
-{
-    const auto b = std::begin(range);
-    const auto e = std::end(range);
-    for (auto it = b; it != e; ++it)
-    {
-        if (it != b)
-        {
-            os << " ";
-        }
-        os << *it;
-    }
-}
 struct nil_t
 {
     friend std::ostream& operator<<(std::ostream& os, const nil_t&)
@@ -392,7 +393,7 @@ struct list_t : public std::vector<value_t>
     friend std::ostream& operator<<(std::ostream& os, const list_t& item)
     {
         os << "(";
-        format_range(os, item);
+        detail::format_range(os, item);
         os << ")";
         return os;
     }
@@ -406,7 +407,7 @@ struct vector_t : public std::vector<value_t>
     friend std::ostream& operator<<(std::ostream& os, const vector_t& item)
     {
         os << "[";
-        format_range(os, item);
+        detail::format_range(os, item);
         os << "]";
         return os;
     }
@@ -420,7 +421,7 @@ struct set_t : public std::set<value_t>
     friend std::ostream& operator<<(std::ostream& os, const set_t& item)
     {
         os << "#{";
-        format_range(os, item);
+        detail::format_range(os, item);
         os << "}";
         return os;
     }
@@ -434,7 +435,7 @@ struct map_t : public std::map<value_t, value_t>
     friend std::ostream& operator<<(std::ostream& os, const map_t& item)
     {
         os << "{";
-        format_range(os, item, [&](std::ostream& s, const auto& it) { s << it.first << " " << it.second; });
+        detail::format_range(os, item, [&](std::ostream& s, const auto& it) { s << it.first << " " << it.second; });
         os << "}";
         return os;
     }
@@ -557,7 +558,7 @@ inline bool operator<(const value_t& lhs, const value_t& rhs)
                     [](const set_t& lt, const set_t& rt) { return lt < rt; },
                     [](const map_t& lt, const map_t& rt) { return lt < rt; },
                     [](const callable_t& lt, const callable_t& rt) { return false; },
-                    [](const auto& lt, const auto& rt) { return true; } },
+                    [](const auto& lt, const auto& rt) { return false; } },
         lhs,
         rhs);
 }
@@ -1102,11 +1103,8 @@ private:
 
     static auto create_overload(span<value_t> input) -> clojure_t::overload_t
     {
-        if (std::get_if<vector_t>(&input.at(0)))
-        {
-            return clojure_t::overload_t{ input.at(0), input.slice(1, {}) };
-        }
-        throw exception<>("callable: vector required");
+        value_t parameters = get<vector_t>(input.at(0), "callable: vector required");
+        return clojure_t::overload_t{ std::move(parameters), input.slice(1, {}) };
     }
 
     auto eval_callable(span<value_t> input, stack_t& stack) const -> callable_t
@@ -1160,8 +1158,7 @@ private:
 
     auto eval_callable(const value_t& head, span<value_t> tail, stack_t& stack) const -> value_t
     {
-        // const callable_t callable = deref(do_eval(head, stack).if_callable(), "callable expected");
-        const callable_t callable = std::get<callable_t>(do_eval(head, stack));
+        const callable_t callable = get<callable_t>(do_eval(head, stack), "callable expected");
         std::vector<value_t> args;
         args.reserve(tail.size());
         std::transform(
@@ -1221,64 +1218,45 @@ private:
         return eval_callable(head, tail, stack);
     }
 
-    auto eval_vector(const vector_t& input, stack_t& stack) const -> vector_t
-    {
-        vector_t output;
-        output.reserve(input.size());
-        std::transform(
-            input.begin(),
-            input.end(),
-            std::back_inserter(output),
-            [&](const value_t& item) { return do_eval(item, stack); });
-
-        return output;
-    }
-
-    auto eval_set(const set_t& input, stack_t& stack) const -> set_t
-    {
-        set_t output;
-        std::transform(
-            input.begin(),
-            input.end(),
-            std::inserter(output, output.end()),
-            [&](const value_t& item) { return do_eval(item, stack); });
-
-        return output;
-    }
-
-    auto eval_map(const map_t& input, stack_t& stack) const -> map_t
-    {
-        map_t output;
-        for (const auto& [k, v] : input)
-        {
-            output.emplace(do_eval(k, stack), do_eval(v, stack));
-        }
-        return output;
-    }
-
     auto do_eval(const value_t& value, stack_t& stack) const -> value_t
     {
-        if (const auto symbol = std::get_if<symbol_t>(&value))
-        {
-            return stack[*symbol];
-        }
-        if (const auto list = std::get_if<list_t>(&value))
-        {
-            return eval_list(*list, stack);
-        }
-        if (const auto vector = std::get_if<vector_t>(&value))
-        {
-            return eval_vector(*vector, stack);
-        }
-        if (const auto set = std::get_if<set_t>(&value))
-        {
-            return eval_set(*set, stack);
-        }
-        if (const auto map = std::get_if<map_t>(&value))
-        {
-            return eval_map(*map, stack);
-        }
-        return value;
+        return std::visit(
+            overloaded{ [&](const symbol_t& v) -> value_t { return stack[v]; },
+                        [&](const list_t& v) -> value_t { return eval_list(v, stack); },
+                        [&](const vector_t& v) -> value_t
+                        {
+                            vector_t res;
+                            res.reserve(v.size());
+                            std::transform(
+                                v.begin(),
+                                v.end(),
+                                std::back_inserter(res),
+                                [&](const value_t& item) { return do_eval(item, stack); });
+                            return res;
+                        },
+                        [&](const set_t& v) -> value_t
+                        {
+                            set_t res;
+                            std::transform(
+                                v.begin(),
+                                v.end(),
+                                std::inserter(res, res.end()),
+                                [&](const value_t& item) { return do_eval(item, stack); });
+                            return res;
+                        },
+                        [&](const map_t& v) -> value_t
+                        {
+                            map_t res;
+                            for (const auto& [k, v] : v)
+                            {
+                                res.emplace(do_eval(k, stack), do_eval(v, stack));
+                            }
+                            return res;
+                        },
+                        [](const auto& v) -> value_t { return v; }
+
+            },
+            value);
     }
 
     auto eval(const value_t& value, stack_t& stack) const -> value_t
