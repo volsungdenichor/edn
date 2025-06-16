@@ -771,7 +771,7 @@ private:
         return ss ? std::optional<T>{ std::move(res) } : std::optional<T>{};
     }
 
-    static auto as_string(const token_t& tok) -> std::optional<string_t>
+    static auto as_string(const token_t& tok) -> std::optional<value_t>
     {
         if (tok.front() == '\"' && tok.back() == '\"')
         {
@@ -780,7 +780,7 @@ private:
         return {};
     }
 
-    static auto as_integer(const token_t& tok) -> std::optional<integer_t>
+    static auto as_integer(const token_t& tok) -> std::optional<value_t>
     {
         if (std::find(tok.begin(), tok.end(), '.') == tok.end())
         {
@@ -789,12 +789,12 @@ private:
         return {};
     }
 
-    static auto as_floating_point(const token_t& tok) -> std::optional<floating_point_t>
+    static auto as_floating_point(const token_t& tok) -> std::optional<value_t>
     {
         return try_parse<floating_point_t>(tok);
     }
 
-    static auto as_boolean(const token_t& tok) -> std::optional<boolean_t>
+    static auto as_boolean(const token_t& tok) -> std::optional<value_t>
     {
         if (tok == "true")
         {
@@ -807,7 +807,7 @@ private:
         return {};
     }
 
-    static auto as_nil(const token_t& tok) -> std::optional<nil_t>
+    static auto as_nil(const token_t& tok) -> std::optional<value_t>
     {
         if (tok == "nil")
         {
@@ -816,7 +816,7 @@ private:
         return {};
     }
 
-    static auto as_symbol(const token_t& tok) -> std::optional<symbol_t>
+    static auto as_symbol(const token_t& tok) -> std::optional<value_t>
     {
         return symbol_t{ tok.c_str() };
     }
@@ -827,7 +827,7 @@ private:
         { '\t', "tab" },
     };
 
-    static auto as_character(const token_t& tok) -> std::optional<character_t>
+    static auto as_character(const token_t& tok) -> std::optional<value_t>
     {
         if (tok.empty() || tok[0] != '\\')
         {
@@ -847,7 +847,7 @@ private:
         return {};
     }
 
-    static auto as_keyword(const token_t& tok) -> std::optional<keyword_t>
+    static auto as_keyword(const token_t& tok) -> std::optional<value_t>
     {
         if (tok[0] == ':')
         {
@@ -856,7 +856,7 @@ private:
         return {};
     }
 
-    static auto as_tagged(const token_t& tok) -> std::optional<tagged_element_t>
+    static auto as_tagged(const token_t& tok) -> std::optional<value_t>
     {
         if (tok[0] == '#')
         {
@@ -867,37 +867,23 @@ private:
 
     static auto read_atom(const token_t& tok) -> value_t
     {
-        if (const auto v = as_boolean(tok))
+        using handler_t = std::optional<value_t> (*)(const token_t&);
+        static const std::vector<handler_t> handlers = {
+            &parse_fn::as_boolean,         //
+            &parse_fn::as_nil,             //
+            &parse_fn::as_string,          //
+            &parse_fn::as_keyword,         //
+            &parse_fn::as_integer,         //
+            &parse_fn::as_floating_point,  //
+            &parse_fn::as_character,       //
+            &parse_fn::as_symbol,          //
+        };
+        for (const handler_t& handler : handlers)
         {
-            return *v;
-        }
-        else if (const auto v = as_nil(tok))
-        {
-            return *v;
-        }
-        if (const auto v = as_string(tok))
-        {
-            return *v;
-        }
-        else if (const auto v = as_keyword(tok))
-        {
-            return *v;
-        }
-        else if (const auto v = as_integer(tok))
-        {
-            return *v;
-        }
-        else if (const auto v = as_floating_point(tok))
-        {
-            return *v;
-        }
-        else if (const auto v = as_character(tok))
-        {
-            return *v;
-        }
-        else if (const auto v = as_symbol(tok))
-        {
-            return *v;
+            if (const auto v = handler(tok))
+            {
+                return *v;
+            }
         }
         throw detail::exception<>("Unrecognized token `", tok, "`");
     }
