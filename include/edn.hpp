@@ -178,7 +178,7 @@ static void format_range(std::ostream& os, Range&& range)
     }
 }
 
-template <class E = std::runtime_error, class... Args>
+template <class E, class... Args>
 auto exception(Args&&... args) -> E
 {
     return E{ str(std::forward<Args>(args)...) };
@@ -613,7 +613,7 @@ struct stack_t
             return outer->get(symbol);
         }
 
-        throw detail::exception<>("Unrecognized symbol `", symbol, "`");
+        throw detail::exception<std::runtime_error>("Unrecognized symbol `", symbol, "`");
     }
 
     const value_t& operator[](const symbol_t& symbol) const
@@ -709,14 +709,9 @@ private:
         const auto iter = std::find_if(b, e, [](char ch) { return is_space(ch) || is_parenthesis(ch); });
         if (iter != e)
         {
-            if (is_space(*iter))
-            {
-                return tokenizer_result_t{ token_t{ b, iter }, string_view(iter + 1, e) };
-            }
-            else
-            {
-                return tokenizer_result_t{ token_t{ b, iter }, string_view(iter, e) };
-            }
+            return is_space(*iter)  //
+                       ? tokenizer_result_t{ token_t{ b, iter }, string_view(iter + 1, e) }
+                       : tokenizer_result_t{ token_t{ b, iter }, string_view(iter, e) };
         }
         else
         {
@@ -730,13 +725,19 @@ static constexpr inline auto tokenize = tokenize_fn{};
 
 struct parse_fn
 {
+    enum class read_from_mode
+    {
+        standard,
+        tagged
+    };
+
     auto operator()(string_view text) const -> value_t
     {
         std::vector<token_t> tokens = tokenize(text);
         std::vector<value_t> values;
         while (!tokens.empty())
         {
-            values.push_back(read_from(tokens));
+            values.push_back(read_from(tokens, read_from_mode::standard));
         }
         if (values.size() == 1)
         {
@@ -754,7 +755,7 @@ private:
     {
         if (v.empty())
         {
-            throw detail::exception<>("Cannot pop from empty vector");
+            throw detail::exception<std::runtime_error>("Cannot pop from empty vector");
         }
         T result = v.front();
         v.erase(std::begin(v));
@@ -885,7 +886,7 @@ private:
                 return *v;
             }
         }
-        throw detail::exception<>("Unrecognized token `", tok, "`");
+        throw detail::exception<std::runtime_error>("Unrecognized token `", tok, "`");
     }
 
     static auto to_map(const std::vector<value_t>& items) -> map_t
@@ -903,18 +904,18 @@ private:
         auto result = std::vector<value_t>{};
         if (tokens.empty())
         {
-            throw exception<>("invalid parentheses");
+            throw detail::exception<std::runtime_error>("invalid parentheses");
         }
         while (!tokens.empty() && tokens.front() != delimiter)
         {
-            value_t v = read_from(tokens);
+            value_t v = read_from(tokens, read_from_mode::standard);
             result.push_back(std::move(v));
         }
         pop_front(tokens);
         return result;
     }
 
-    static auto read_from(std::vector<token_t>& tokens, bool tagged = false) -> value_t
+    static auto read_from(std::vector<token_t>& tokens, read_from_mode mode) -> value_t
     {
         if (tokens.empty())
         {
@@ -923,7 +924,7 @@ private:
         const auto front = pop_front(tokens);
         if (front == "'")
         {
-            auto arg = read_from(tokens);
+            auto arg = read_from(tokens, read_from_mode::standard);
             return list_t{ symbol_t{ "quote" }, std::move(arg) };
         }
         if (front == "(")
@@ -938,7 +939,7 @@ private:
         }
         else if (front == "#")
         {
-            auto rest = read_from(tokens, true);
+            auto rest = read_from(tokens, read_from_mode::tagged);
             if (const auto v = std::get_if<vector_t>(&rest))
             {
                 return set_t(v->begin(), v->end());
@@ -949,13 +950,14 @@ private:
             }
             else
             {
-                throw exception<>("# must be followed by {...} (for set) or by symbol (for tagged element)");
+                throw detail::exception<std::runtime_error>(
+                    "# must be followed by {...} (for set) or by symbol (for tagged element)");
             }
         }
         else if (front == "{")
         {
             auto items = read_until(tokens, "}");
-            if (!tagged)
+            if (mode == read_from_mode::standard)
             {
                 return to_map(items);
             }
@@ -984,7 +986,7 @@ private:
         const T* ptr = std::get_if<T>(&v);
         if (!ptr)
         {
-            throw exception<>(args...);
+            throw exception<std::runtime_error>(args...);
         }
         return *ptr;
     }
@@ -1059,7 +1061,7 @@ private:
                     return self.eval_block(overload.body, new_stack);
                 }
             }
-            throw exception<>("could not resolve function overload for ", args.size(), " arg(s)");
+            throw exception<std::runtime_error>("could not resolve function overload for ", args.size(), " arg(s)");
         };
     };
 
@@ -1248,7 +1250,7 @@ private:
         }
         catch (const std::exception& ex)
         {
-            throw exception<>("Error on evaluating `", value, "`: ", ex.what());
+            throw detail::exception<std::runtime_error>("Error on evaluating `", value, "`: ", ex.what());
         }
     }
 };
