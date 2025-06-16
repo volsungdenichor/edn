@@ -22,6 +22,82 @@
 namespace edn
 {
 
+using boolean_t = bool;
+using integer_t = std::int32_t;
+using floating_point_t = double;
+using character_t = char;
+
+struct nil_t;
+struct list_t;
+struct vector_t;
+struct set_t;
+struct map_t;
+struct callable_t;
+struct string_t;
+struct symbol_t;
+struct keyword_t;
+struct tagged_element_t;
+
+using value_t = std::variant<
+    nil_t,
+    boolean_t,
+    integer_t,
+    floating_point_t,
+    string_t,
+    character_t,
+    symbol_t,
+    keyword_t,
+    tagged_element_t,
+    list_t,
+    vector_t,
+    set_t,
+    map_t,
+    callable_t>;
+
+enum class type_t
+{
+    nil,
+    boolean,
+    integer,
+    floating_point,
+    string,
+    character,
+    symbol,
+    keyword,
+    tagged_element,
+    list,
+    vector,
+    set,
+    map,
+    callable
+};
+
+inline std::ostream& operator<<(std::ostream& os, const type_t item)
+{
+    switch (item)
+    {
+#define CASE(x) \
+    case type_t::x: return os << #x
+        CASE(nil);
+        CASE(boolean);
+        CASE(integer);
+        CASE(floating_point);
+        CASE(string);
+        CASE(character);
+        CASE(symbol);
+        CASE(keyword);
+        CASE(tagged_element);
+        CASE(list);
+        CASE(vector);
+        CASE(set);
+        CASE(map);
+        CASE(callable);
+#undef CASE
+        default: break;
+    }
+    return os;
+}
+
 namespace detail
 {
 
@@ -260,82 +336,6 @@ static void format_range(std::ostream& os, Range&& range)
         }
         os << *it;
     }
-}
-
-using boolean_t = bool;
-using integer_t = std::int32_t;
-using floating_point_t = double;
-using character_t = char;
-
-struct nil_t;
-struct list_t;
-struct vector_t;
-struct set_t;
-struct map_t;
-struct callable_t;
-struct string_t;
-struct symbol_t;
-struct keyword_t;
-struct tagged_element_t;
-
-using value_t = std::variant<
-    nil_t,
-    boolean_t,
-    integer_t,
-    floating_point_t,
-    string_t,
-    character_t,
-    symbol_t,
-    keyword_t,
-    tagged_element_t,
-    list_t,
-    vector_t,
-    set_t,
-    map_t,
-    callable_t>;
-
-enum class type_t
-{
-    nil,
-    boolean,
-    integer,
-    floating_point,
-    string,
-    character,
-    symbol,
-    keyword,
-    tagged_element,
-    list,
-    vector,
-    set,
-    map,
-    callable
-};
-
-inline std::ostream& operator<<(std::ostream& os, const type_t item)
-{
-    switch (item)
-    {
-#define CASE(x) \
-    case type_t::x: return os << #x
-        CASE(nil);
-        CASE(boolean);
-        CASE(integer);
-        CASE(floating_point);
-        CASE(string);
-        CASE(character);
-        CASE(symbol);
-        CASE(keyword);
-        CASE(tagged_element);
-        CASE(list);
-        CASE(vector);
-        CASE(set);
-        CASE(map);
-        CASE(callable);
-#undef CASE
-        default: break;
-    }
-    return os;
 }
 struct nil_t
 {
@@ -991,8 +991,9 @@ struct evaluate_fn
 
 private:
     template <class T, class... Args>
-    static auto deref(T* ptr, const Args&... args) -> T&
+    static auto get(const value_t& v, const Args&... args) -> const T&
     {
+        const T* ptr = std::get_if<T>(&v);
         if (!ptr)
         {
             throw exception<>(args...);
@@ -1012,9 +1013,9 @@ private:
                 std::vector<symbol_t> mandatory;
                 std::vector<symbol_t> variadic;
                 std::vector<symbol_t>* current = &mandatory;
-                for (const value_t& v : deref(std::get_if<vector_t>(&parameters), "vector required"))
+                for (const value_t& v : get<vector_t>(parameters, "vector required"))
                 {
-                    const symbol_t& s = deref(std::get_if<symbol_t>(&v), "symbol required");
+                    const symbol_t& s = get<symbol_t>(v, "symbol required");
                     if (s == symbol_t{ "&" })
                     {
                         current = &variadic;
@@ -1025,7 +1026,9 @@ private:
                     }
                 }
                 return { std::move(mandatory),
-                         !variadic.empty() ? std::optional<symbol_t>{ variadic.at(0) } : std::optional<symbol_t>{} };
+                         !variadic.empty()  //
+                             ? std::optional<symbol_t>{ variadic.at(0) }
+                             : std::optional<symbol_t>{} };
             }
         };
 
@@ -1083,20 +1086,18 @@ private:
 
     auto eval_let(span<value_t> input, stack_t& stack) const -> value_t
     {
-        const auto& bindings = deref(std::get_if<vector_t>(&input.at(0)), "vector expected");
+        const auto& bindings = get<vector_t>(input.at(0), "vector expected");
         auto new_stack = stack_t{ stack_t::frame_type{}, &stack };
         for (std::size_t i = 0; i < bindings.size(); i += 2)
         {
-            new_stack.insert(
-                deref(std::get_if<symbol_t>(&bindings.at(i + 0)), "symbol expected"),
-                do_eval(bindings.at(i + 1), new_stack));
+            new_stack.insert(get<symbol_t>(bindings.at(i + 0), "symbol expected"), do_eval(bindings.at(i + 1), new_stack));
         }
         return eval_block(input.slice(1, {}), new_stack);
     }
 
     auto eval_def(span<value_t> input, stack_t& stack) const -> value_t
     {
-        return stack.insert(deref(std::get_if<symbol_t>(&input.at(0)), "symbol expected"), do_eval(input.at(1), stack));
+        return stack.insert(get<symbol_t>(input.at(0), "symbol expected"), do_eval(input.at(1), stack));
     }
 
     static auto create_overload(span<value_t> input) -> clojure_t::overload_t
@@ -1115,7 +1116,7 @@ private:
         {
             for (const value_t& v : input)
             {
-                overloads.push_back(create_overload(span<value_t>(deref(std::get_if<list_t>(&v), "list expected"))));
+                overloads.push_back(create_overload(span<value_t>(get<list_t>(v, "list expected"))));
             }
         }
         else
@@ -1132,14 +1133,12 @@ private:
 
     auto eval_defn(span<value_t> input, stack_t& stack) const -> value_t
     {
-        return stack.insert(
-            deref(std::get_if<symbol_t>(&input.at(0)), "symbol expected"), eval_callable(input.slice(1, {}), stack));
+        return stack.insert(get<symbol_t>(input.at(0), "symbol expected"), eval_callable(input.slice(1, {}), stack));
     }
 
     auto eval_boolean(const value_t& value, stack_t& stack) const -> bool
     {
-        const value_t res = do_eval(value, stack);
-        return deref(std::get_if<boolean_t>(&res), "boolean expected");
+        return get<boolean_t>(do_eval(value, stack), "boolean expected");
     }
 
     auto eval_if(span<value_t> input, stack_t& stack) const -> value_t

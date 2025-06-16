@@ -9,40 +9,26 @@ auto to_span(const edn::value_t& arg) -> edn::span<edn::value_t>
 
 auto type(edn::span<edn::value_t> args) -> edn::value_t
 {
-    switch (edn::type(args.at(0)))
-    {
-#define CASE(x) \
-    case edn::type_t::x: return edn::keyword_t{ #x }
-        CASE(nil);
-        CASE(boolean);
-        CASE(integer);
-        CASE(floating_point);
-        CASE(string);
-        CASE(character);
-        CASE(symbol);
-        CASE(keyword);
-        CASE(tagged_element);
-        CASE(list);
-        CASE(vector);
-        CASE(set);
-        CASE(map);
-        CASE(callable);
-#undef CASE
-        default: return edn::keyword_t{ "nil" };
-    }
+    static const std::map<edn::type_t, edn::keyword_t> map = {
+        { edn::type_t::nil, edn::keyword_t(edn::str(edn::type_t::nil).c_str()) },
+        { edn::type_t::boolean, edn::keyword_t(edn::str(edn::type_t::boolean).c_str()) },
+        { edn::type_t::integer, edn::keyword_t(edn::str(edn::type_t::integer).c_str()) },
+        { edn::type_t::floating_point, edn::keyword_t(edn::str(edn::type_t::floating_point).c_str()) },
+        { edn::type_t::string, edn::keyword_t(edn::str(edn::type_t::string).c_str()) },
+        { edn::type_t::character, edn::keyword_t(edn::str(edn::type_t::character).c_str()) },
+        { edn::type_t::symbol, edn::keyword_t(edn::str(edn::type_t::symbol).c_str()) },
+        { edn::type_t::keyword, edn::keyword_t(edn::str(edn::type_t::keyword).c_str()) },
+        { edn::type_t::tagged_element, edn::keyword_t(edn::str(edn::type_t::tagged_element).c_str()) },
+        { edn::type_t::list, edn::keyword_t(edn::str(edn::type_t::list).c_str()) },
+        { edn::type_t::vector, edn::keyword_t(edn::str(edn::type_t::vector).c_str()) },
+        { edn::type_t::set, edn::keyword_t(edn::str(edn::type_t::set).c_str()) },
+        { edn::type_t::map, edn::keyword_t(edn::str(edn::type_t::map).c_str()) },
+        { edn::type_t::callable, edn::keyword_t(edn::str(edn::type_t::callable).c_str()) },
+    };
+    return map.at(edn::type(args.at(0)));
 }
 
 auto print(edn::span<edn::value_t> args) -> edn::value_t
-{
-    for (const edn::value_t& arg : args)
-    {
-        std::cout << arg;
-    }
-    std::cout << std::endl;
-    return {};
-}
-
-auto debug(edn::span<edn::value_t> args) -> edn::value_t
 {
     for (const edn::value_t& arg : args)
     {
@@ -123,43 +109,16 @@ struct binary_op
             throw std::runtime_error{ "binary_op: two arguments expected" };
         }
         static const auto op = Op{};
-        {
-            const auto lhs = std::get_if<edn::integer_t>(&args.at(0));
-            const auto rhs = std::get_if<edn::integer_t>(&args.at(1));
-            if (lhs && rhs)
-            {
-                return op(*lhs, *rhs);
-            }
-        }
+        return std::visit(
+            edn::overloaded{ [](edn::integer_t lt, edn::integer_t rt) -> edn::value_t { return op(lt, rt); },
+                             [](edn::floating_point_t lt, edn::integer_t rt) -> edn::value_t { return op(lt, rt); },
+                             [](edn::integer_t lt, edn::floating_point_t rt) -> edn::value_t { return op(lt, rt); },
+                             [](edn::floating_point_t lt, edn::floating_point_t rt) -> edn::value_t { return op(lt, rt); },
+                             [](const auto&, const auto&) -> edn::value_t { return edn::nil_t{}; }
 
-        {
-            const auto lhs = std::get_if<edn::floating_point_t>(&args.at(0));
-            const auto rhs = std::get_if<edn::integer_t>(&args.at(1));
-            if (lhs && rhs)
-            {
-                return op(*lhs, *rhs);
-            }
-        }
-
-        {
-            const auto lhs = std::get_if<edn::integer_t>(&args.at(0));
-            const auto rhs = std::get_if<edn::floating_point_t>(&args.at(1));
-            if (lhs && rhs)
-            {
-                return op(*lhs, *rhs);
-            }
-        }
-
-        {
-            const auto lhs = std::get_if<edn::floating_point_t>(&args.at(0));
-            const auto rhs = std::get_if<edn::floating_point_t>(&args.at(1));
-            if (lhs && rhs)
-            {
-                return op(*lhs, *rhs);
-            }
-        }
-
-        return {};
+            },
+            args.at(0),
+            args.at(1));
     }
 };
 
@@ -172,7 +131,7 @@ void run()
             result.insert(edn::symbol_t{ "type" }, edn::callable_t{ &type });
             result.insert(edn::symbol_t{ "print" }, edn::callable_t{ &print });
             result.insert(edn::symbol_t{ "println" }, edn::callable_t{ &print });
-            result.insert(edn::symbol_t{ "debug" }, edn::callable_t{ &debug });
+            result.insert(edn::symbol_t{ "debug" }, edn::callable_t{ &print });
 
             result.insert(edn::symbol_t{ "+" }, edn::callable_t{ binary_op<std::plus<>>{} });
             result.insert(edn::symbol_t{ "-" }, edn::callable_t{ binary_op<std::minus<>>{} });
