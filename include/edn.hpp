@@ -178,11 +178,6 @@ static void format_range(std::ostream& os, Range&& range)
     }
 }
 
-}  // namespace detail
-
-using detail::delimit;
-using detail::str;
-
 template <class E = std::runtime_error, class... Args>
 auto exception(Args&&... args) -> E
 {
@@ -197,6 +192,12 @@ struct overloaded : Ts...
 
 template <class... Ts>
 overloaded(Ts...) -> overloaded<Ts...>;
+
+}  // namespace detail
+
+using detail::delimit;
+using detail::overloaded;
+using detail::str;
 
 template <class T>
 class span
@@ -612,7 +613,7 @@ struct stack_t
             return outer->get(symbol);
         }
 
-        throw exception<>("Unrecognized symbol `", symbol, "`");
+        throw detail::exception<>("Unrecognized symbol `", symbol, "`");
     }
 
     const value_t& operator[](const symbol_t& symbol) const
@@ -753,7 +754,7 @@ private:
     {
         if (v.empty())
         {
-            throw exception<>("Cannot pop from empty vector");
+            throw detail::exception<>("Cannot pop from empty vector");
         }
         T result = v.front();
         v.erase(std::begin(v));
@@ -898,7 +899,7 @@ private:
         {
             return *v;
         }
-        throw exception<>("Unrecognized token `", tok, "`");
+        throw detail::exception<>("Unrecognized token `", tok, "`");
     }
 
     static auto to_map(const std::vector<value_t>& items) -> map_t
@@ -1161,8 +1162,10 @@ private:
         const callable_t callable = get<callable_t>(do_eval(head, stack), "callable expected");
         std::vector<value_t> args;
         args.reserve(tail.size());
-        std::transform(
-            tail.begin(), tail.end(), std::back_inserter(args), [&](const value_t& item) { return do_eval(item, stack); });
+        for (const value_t& item : tail)
+        {
+            args.push_back(do_eval(item, stack));
+        }
         return callable(args);
     }
 
@@ -1175,6 +1178,11 @@ private:
             [&](const value_t&, const value_t& item) -> value_t { return do_eval(item, stack); });
     }
 
+    auto eval_quote(span<value_t> input, stack_t& stack) const -> value_t
+    {
+        return input[0];
+    }
+
     auto eval_list(const list_t& input, stack_t& stack) const -> value_t
     {
         if (input.empty())
@@ -1183,37 +1191,26 @@ private:
         }
         const value_t& head = input.at(0);
         const auto tail = span<value_t>{ input }.slice(1, {});
-        if (head == symbol_t{ "quote" })
+
+        using handler_t = value_t (evaluate_fn::*)(span<value_t>, stack_t&) const;
+
+        static const std::map<symbol_t, handler_t> handlers = {
+            { symbol_t{ "quote" }, &evaluate_fn::eval_quote },  //
+            { symbol_t{ "let" }, &evaluate_fn::eval_let },      //
+            { symbol_t{ "def" }, &evaluate_fn::eval_def },      //
+            { symbol_t{ "fn" }, &evaluate_fn::eval_fn },        //
+            { symbol_t{ "defn" }, &evaluate_fn::eval_defn },    //
+            { symbol_t{ "if" }, &evaluate_fn::eval_if },        //
+            { symbol_t{ "cond" }, &evaluate_fn::eval_cond },    //
+            { symbol_t{ "do" }, &evaluate_fn::eval_do },        //
+        };
+
+        if (const auto h = std::get_if<symbol_t>(&head))
         {
-            return tail[0];
-        }
-        if (head == symbol_t{ "let" })
-        {
-            return eval_let(tail, stack);
-        }
-        if (head == symbol_t{ "def" })
-        {
-            return eval_def(tail, stack);
-        }
-        if (head == symbol_t{ "fn" })
-        {
-            return eval_fn(tail, stack);
-        }
-        if (head == symbol_t{ "defn" })
-        {
-            return eval_defn(tail, stack);
-        }
-        if (head == symbol_t{ "if" })
-        {
-            return eval_if(tail, stack);
-        }
-        if (head == symbol_t{ "cond" })
-        {
-            return eval_cond(tail, stack);
-        }
-        if (head == symbol_t{ "do" })
-        {
-            return eval_do(tail, stack);
+            if (const auto handler = handlers.find(*h); handler != handlers.end())
+            {
+                return std::invoke(handler->second, this, tail, stack);
+            }
         }
         return eval_callable(head, tail, stack);
     }
@@ -1227,21 +1224,19 @@ private:
                         {
                             vector_t res;
                             res.reserve(v.size());
-                            std::transform(
-                                v.begin(),
-                                v.end(),
-                                std::back_inserter(res),
-                                [&](const value_t& item) { return do_eval(item, stack); });
+                            for (const value_t& item : v)
+                            {
+                                res.push_back(do_eval(item, stack));
+                            }
                             return res;
                         },
                         [&](const set_t& v) -> value_t
                         {
                             set_t res;
-                            std::transform(
-                                v.begin(),
-                                v.end(),
-                                std::inserter(res, res.end()),
-                                [&](const value_t& item) { return do_eval(item, stack); });
+                            for (const value_t& item : v)
+                            {
+                                res.insert(do_eval(item, stack));
+                            }
                             return res;
                         },
                         [&](const map_t& v) -> value_t
