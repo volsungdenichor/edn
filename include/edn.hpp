@@ -484,6 +484,7 @@ inline type_t type(const value_t& value)
         overloaded{
             [](nil_t) { return type_t::nil; },
             [](boolean_t) { return type_t::boolean; },
+            [](character_t) { return type_t::character; },
             [](integer_t) { return type_t::integer; },
             [](floating_point_t) { return type_t::floating_point; },
             [](const string_t&) { return type_t::string; },
@@ -499,12 +500,32 @@ inline type_t type(const value_t& value)
         value);
 }
 
+static const inline std::vector<std::tuple<char, std::string>> character_names = {
+    { ' ', "space" },
+    { '\n', "newline" },
+    { '\t', "tab" },
+};
+
+void format_character(std::ostream& os, character_t v)
+{
+    for (const auto& [ch, value] : character_names)
+    {
+        if (ch == v)
+        {
+            os << '\\' << value;
+            return;
+        }
+    }
+    os << '\\' << v;
+}
+
 inline std::ostream& operator<<(std::ostream& os, const value_t& item)
 {
     std::visit(
         overloaded{
             [&](nil_t v) { os << v; },
             [&](boolean_t v) { os << (v ? "true" : "false"); },
+            [&](character_t v) { format_character(os, v); },
             [&](integer_t v) { os << v; },
             [&](floating_point_t v) { os << v; },
             [&](const string_t& v) { os << v; },
@@ -526,6 +547,7 @@ inline bool operator==(const value_t& lhs, const value_t& rhs)
     return std::visit(
         overloaded{ [](nil_t lt, nil_t rt) { return true; },
                     [](boolean_t lt, boolean_t rt) { return lt == rt; },
+                    [](character_t lt, character_t rt) { return lt == rt; },
                     [](integer_t lt, integer_t rt) { return lt == rt; },
                     [](floating_point_t lt, floating_point_t rt)
                     { return std::abs(lt - rt) < std::numeric_limits<floating_point_t>::epsilon(); },
@@ -548,6 +570,7 @@ inline bool operator<(const value_t& lhs, const value_t& rhs)
     return std::visit(
         overloaded{ [](nil_t lt, nil_t rt) { return false; },
                     [](boolean_t lt, boolean_t rt) { return lt < rt; },
+                    [](character_t lt, character_t rt) { return lt < rt; },
                     [](integer_t lt, integer_t rt) { return lt < rt; },
                     [](floating_point_t lt, floating_point_t rt) { return lt < rt; },
                     [](const string_t& lt, const string_t& rt) { return lt < rt; },
@@ -625,7 +648,11 @@ struct stack_t
 namespace detail
 {
 
-using token_t = std::string;
+struct token_t : public std::string
+{
+    using base_t = std::string;
+    using base_t::base_t;
+};
 
 struct tokenize_fn
 {
@@ -696,7 +723,7 @@ private:
         }
         if (text[0] == '#' || text[0] == '\'' || is_parenthesis(text[0]))
         {
-            return std::tuple{ std::string(1, text[0]), text.slice(1, {}) };
+            return tokenizer_result_t{ token_t(1, text[0]), text.slice(1, {}) };
         }
         if (is_quotation_mark(text[0]))
         {
@@ -821,12 +848,6 @@ private:
     {
         return symbol_t{ tok.c_str() };
     }
-
-    static const inline std::vector<std::tuple<char, std::string>> character_names = {
-        { ' ', "space" },
-        { '\n', "newline" },
-        { '\t', "tab" },
-    };
 
     static auto as_character(const token_t& tok) -> std::optional<value_t>
     {

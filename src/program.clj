@@ -7,6 +7,7 @@
 (print (get_info 53))
 (print (get_info 2.71))
 (print (get_info \X))
+(print (get_info \space))
 (print (get_info "ABC"))
 (print (get_info :abc))
 (print (get_info 'abc))
