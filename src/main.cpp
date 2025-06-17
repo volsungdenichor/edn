@@ -1,6 +1,32 @@
 #include <edn.hpp>
+#include <fstream>
 #include <iostream>
 #include <memory>
+
+std::vector<std::string> to_program_args(int argc, char** argv)
+{
+    std::vector<std::string> result;
+    for (int i = 0; i < argc; ++i)
+    {
+        result.push_back(argv[i]);
+    }
+    return result;
+}
+
+std::string load_file(std::istream& is)
+{
+    return std::string(std::istreambuf_iterator<char>{ is }, std::istreambuf_iterator<char>{});
+}
+
+std::string load_file(const std::string& path)
+{
+    std::ifstream file(path);
+    if (!file)
+    {
+        throw std::runtime_error{ "cannot open '" + path + '"' };
+    }
+    return load_file(file);
+}
 
 auto to_span(const edn::value_t& arg) -> edn::span<edn::value_t>
 {
@@ -122,7 +148,7 @@ struct binary_op
     }
 };
 
-void run()
+void run(const std::vector<std::string>& args)
 {
     auto stack = std::invoke(
         [&]() -> edn::stack_t
@@ -152,39 +178,22 @@ void run()
             return result;
         });
 
-    const edn::value_t value = edn::parse(R"(
+    const std::string path = args.size() >= 2 ? args.at(1) : "../src/program.clj";
 
-        (println '(and [(field "first-name" (eq "Adam")) (field "last-name" (eq "Mickiewicz") ) ]))
+    const std::string file_content = load_file(path);
 
-        (defn get_info [x] {:value x :type (type x)})
-        (print (get_info true))
-        (print (get_info false))
-        (print (get_info nil))
-        (print (get_info 53))
-        (print (get_info 2.71))
-        (print (get_info \X))
-        (print (get_info "ABC"))
-        (print (get_info :abc))
-        (print (get_info 'abc))
-        (print (get_info '(:A :B :C)))
-        (print (get_info #{:A :B :C}))
-        (print (get_info {:name "Gumball"}))
-        (print (get_info [:A :B :C]))
-
-        (print ">>> " ''(+ 2 3))
-        (+ 53 (* 2 3))
-    )");
+    const edn::value_t value = edn::parse(file_content);
 
     std::cout << "expr: " << value << "\n\n";
     const auto result = edn::evaluate(value, stack);
     std::cout << "result: " << result << "\n";
 }
 
-int main()
+int main(int argc, char** argv)
 {
     try
     {
-        run();
+        run(to_program_args(argc, argv));
     }
     catch (const std::exception& ex)
     {
