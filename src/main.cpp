@@ -3,7 +3,16 @@
 #include <iostream>
 #include <memory>
 
-std::vector<std::string> to_program_args(int argc, char** argv)
+struct path_t : public std::string
+{
+    using base_t = std::string;
+
+    explicit path_t(std::string_view path) : base_t(path)
+    {
+    }
+};
+
+inline auto to_program_args(int argc, char** argv) -> std::vector<std::string>
 {
     std::vector<std::string> result;
     for (int i = 0; i < argc; ++i)
@@ -13,17 +22,17 @@ std::vector<std::string> to_program_args(int argc, char** argv)
     return result;
 }
 
-std::string load_file(std::istream& is)
+inline auto load_file(std::istream& is) -> std::string
 {
     return std::string(std::istreambuf_iterator<char>{ is }, std::istreambuf_iterator<char>{});
 }
 
-std::string load_file(const std::string& path)
+inline auto load_file(const path_t& path) -> std::string
 {
     std::ifstream file(path);
     if (!file)
     {
-        throw std::runtime_error{ "cannot open '" + path + '"' };
+        throw std::runtime_error{ edn::str("cannot open '", path, '"') };
     }
     return load_file(file);
 }
@@ -178,14 +187,14 @@ void run(const std::vector<std::string>& args)
             return result;
         });
 
-    const std::string path = args.size() >= 2 ? args.at(1) : "../src/program.clj";
+    const path_t path = args.size() >= 2 ? path_t{ args.at(1) } : path_t{ "../src/program.clj" };
 
     const std::string file_content = load_file(path);
 
     const edn::value_t value = edn::parse(file_content);
 
     std::cout << "expr: " << value << "\n\n";
-    const auto result = edn::evaluate(value, stack);
+    const edn::value_t result = edn::evaluate(value, stack);
     std::cout << "result: " << result << "\n";
 }
 
