@@ -510,7 +510,7 @@ private:
 
         if (text.empty())
         {
-            return {};
+            return std::nullopt;
         }
         if (is_comment(text[0]))
         {
@@ -539,7 +539,7 @@ private:
         {
             return tokenizer_result_t{ token_t{ std::move(text) }, std::string_view{} };
         }
-        return {};
+        return std::nullopt;
     }
 } tokenize;
 
@@ -586,7 +586,7 @@ private:
         ss << txt;
         T res;
         ss >> res;
-        return ss ? std::optional<T>{ std::move(res) } : std::optional<T>{};
+        return ss ? std::optional<T>{ std::move(res) } : std::nullopt;
     }
 
     static auto as_string(const token_t& tok) -> std::optional<value_t>
@@ -595,7 +595,7 @@ private:
         {
             return string_t{ tok.substr(1, tok.size() - 2).c_str() };
         }
-        return {};
+        return std::nullopt;
     }
 
     static auto as_integer(const token_t& tok) -> std::optional<value_t>
@@ -604,7 +604,7 @@ private:
         {
             return try_parse<integer_t>(tok);
         }
-        return {};
+        return std::nullopt;
     }
 
     static auto as_floating_point(const token_t& tok) -> std::optional<value_t>
@@ -622,7 +622,7 @@ private:
         {
             return boolean_t{ false };
         }
-        return {};
+        return std::nullopt;
     }
 
     static auto as_nil(const token_t& tok) -> std::optional<value_t>
@@ -639,7 +639,7 @@ private:
     {
         if (tok.empty() || tok[0] != '\\')
         {
-            return {};
+            return std::nullopt;
         }
         if (tok.size() == 2 && std::isprint(tok[1]))
         {
@@ -652,7 +652,7 @@ private:
                 return character_t{ symbol };
             }
         }
-        return {};
+        return std::nullopt;
     }
 
     static auto as_keyword(const token_t& tok) -> std::optional<value_t>
