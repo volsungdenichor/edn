@@ -319,6 +319,29 @@ inline type_t type(const value_t& value)
         value);
 }
 
+template <class T>
+inline type_t type()
+{
+    static const value_t temp = T{};
+    return type(temp);  // TODO
+}
+
+template <class T>
+const T* try_as(const value_t& value)
+{
+    return std::get_if<T>(&value);
+}
+
+template <class T>
+const T& as(const value_t& value)
+{
+    if (const T* res = try_as<T>(value))
+    {
+        return *res;
+    }
+    throw detail::exception<std::runtime_error>("Invalid type: expected `", type<T>(), "`, actual `", type(value), "`");
+}
+
 static const inline std::vector<std::tuple<char, std::string>> character_names = {
     { ' ', "space" },
     { '\n', "newline" },
@@ -427,6 +450,11 @@ struct token_t : public std::string
     using base_t::base_t;
 };
 
+constexpr inline auto is_quotation_mark(char ch) -> bool
+{
+    return ch == '"';
+};
+
 constexpr inline struct tokenize_fn
 {
     auto operator()(std::string_view text) const -> std::vector<token_t>
@@ -476,17 +504,21 @@ private:
 
     static auto read_quoted_string(std::string_view text) -> tokenizer_result_t
     {
-        assert(!text.empty());
+        if (text.empty() || !is_quotation_mark(text.front()))
+        {
+            return {};
+        }
         auto it = std::begin(text) + 1;
-        token_t result = "\"";
+        token_t result = {};
+        result += '"';
         while (it != std::end(text))
         {
-            if (it[0] == '\\' && std::distance(it, std::end(text)) > 1 && it[1] == '"')
+            if (it[0] == '\\' && std::distance(it, std::end(text)) > 1 && is_quotation_mark(it[1]))
             {
                 result += '"';
                 it += 2;
             }
-            else if (it[0] == '"')
+            else if (is_quotation_mark(it[0]))
             {
                 result += *it++;
                 break;
@@ -503,7 +535,6 @@ private:
     {
         static const auto is_parenthesis
             = [](char ch) { return ch == '(' || ch == ')' || ch == '[' || ch == ']' || ch == '{' || ch == '}'; };
-        static const auto is_quotation_mark = [](char ch) { return ch == '"'; };
         static const auto is_space = [](char ch) { return std::isspace(ch) || ch == ','; };
         static const auto is_comment = [](char ch) { return ch == ';'; };
         static const auto is_new_line = [](char ch) { return ch == '\n'; };
@@ -591,7 +622,7 @@ private:
 
     static auto as_string(const token_t& tok) -> std::optional<value_t>
     {
-        if (tok.front() == '\"' && tok.back() == '\"')
+        if (is_quotation_mark(tok.front()) && is_quotation_mark(tok.back()))
         {
             return string_t{ tok.substr(1, tok.size() - 2).c_str() };
         }
@@ -724,30 +755,30 @@ private:
         {
             return value_t();
         }
-        const auto front = pop_front(tokens);
+        const token_t front = pop_front(tokens);
         if (front == "'")
         {
-            auto arg = read_from(tokens, read_from_mode::standard);
+            value_t arg = read_from(tokens, read_from_mode::standard);
             return list_t{ symbol_t{ "'" }, std::move(arg) };
         }
         if (front == "(")
         {
-            const auto items = read_until(tokens, ")");
+            const std::vector<value_t> items = read_until(tokens, ")");
             return list_t{ items.begin(), items.end() };
         }
         else if (front == "[")
         {
-            const auto items = read_until(tokens, "]");
+            const std::vector<value_t> items = read_until(tokens, "]");
             return vector_t{ items.begin(), items.end() };
         }
         else if (front == "#")
         {
-            auto rest = read_from(tokens, read_from_mode::tagged);
-            if (const auto v = std::get_if<vector_t>(&rest))
+            value_t rest = read_from(tokens, read_from_mode::tagged);
+            if (const auto v = try_as<vector_t>(rest))
             {
                 return set_t(v->begin(), v->end());
             }
-            else if (const auto v = std::get_if<symbol_t>(&rest))
+            else if (const auto v = try_as<symbol_t>(rest))
             {
                 return tagged_element_t{ v->begin(), v->end() };
             }
@@ -759,7 +790,7 @@ private:
         }
         else if (front == "{")
         {
-            auto items = read_until(tokens, "}");
+            std::vector<value_t> items = read_until(tokens, "}");
             return mode == read_from_mode::standard  //
                        ? value_t{ to_map(items) }
                        : value_t{ vector_t{ items.begin(), items.end() } };
@@ -792,5 +823,42 @@ inline auto operator""_s(const char* str, std::size_t) -> string_t
 }
 
 }  // namespace literals
+
+template <class T, class = void>
+struct codec;
+
+template <class T>
+struct codec_instance
+{
+    static const codec<T>& get()
+    {
+        static const codec<T> m_instance = {};
+        return m_instance;
+    }
+};
+
+template <class T>
+value_t encode(const T& in)
+{
+    return codec_instance<T>::get().encode(in);
+}
+
+template <class T>
+void encode(value_t& out, const T& in)
+{
+    return out = encode<T>(in);
+}
+
+template <class T>
+T decode(const value_t& in)
+{
+    return codec_instance<T>::get().decode(in);
+}
+
+template <class T>
+void decode(T& out, const value_t& in)
+{
+    out = decode<T>(in);
+}
 
 }  // namespace edn
