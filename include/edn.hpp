@@ -339,7 +339,8 @@ const T& as(const value_t& value)
     {
         return *res;
     }
-    throw detail::exception<std::runtime_error>("Invalid type: expected `", type<T>(), "`, actual `", type(value), "`");
+    throw detail::exception<std::runtime_error>(
+        "Invalid type: expected <", type<T>(), ">, actual '", value, "' of type <", type(value), ">");
 }
 
 static const inline std::vector<std::tuple<char, std::string>> character_names = {
@@ -444,11 +445,7 @@ inline bool operator>=(const value_t& lhs, const value_t& rhs)
 namespace detail
 {
 
-struct token_t : public std::string
-{
-    using base_t = std::string;
-    using base_t::base_t;
-};
+using token_t = std::string;
 
 constexpr inline auto is_quotation_mark(char ch) -> bool
 {
@@ -502,33 +499,33 @@ private:
         return b != e ? std::string_view{ &*b, static_cast<std::size_t>(std::distance(b, e)) } : std::string_view{};
     }
 
-    static auto read_quoted_string(std::string_view text) -> tokenizer_result_t
+    static auto read_quoted_string(std::string_view text) -> std::optional<tokenizer_result_t>
     {
+        static const auto quotation_mark = '"';
         if (text.empty() || !is_quotation_mark(text.front()))
         {
             return {};
         }
-        auto it = std::begin(text) + 1;
+        text = drop(text, 1);
         token_t result = {};
-        result += '"';
-        while (it != std::end(text))
+        while (!text.empty())
         {
-            if (it[0] == '\\' && std::distance(it, std::end(text)) > 1 && is_quotation_mark(it[1]))
+            if (text[0] == '\\' && text.size() > 1 && is_quotation_mark(text[1]))
             {
-                result += '"';
-                it += 2;
+                result += quotation_mark;
+                text = drop(text, 2);
             }
-            else if (is_quotation_mark(it[0]))
+            else if (is_quotation_mark(text[0]))
             {
-                result += *it++;
-                break;
+                return tokenizer_result_t{ token_t{ str(quotation_mark, result, quotation_mark) }, drop(text, 1) };
             }
             else
             {
-                result += *it++;
+                result += text[0];
+                text = drop(text, 1);
             }
         }
-        return tokenizer_result_t{ result, to_string_view(it, std::end(text)) };
+        return std::nullopt;
     }
 
     static auto read_token(std::string_view text) -> std::optional<tokenizer_result_t>
@@ -551,9 +548,9 @@ private:
         {
             return tokenizer_result_t{ token_t(1, text[0]), drop(text, 1) };
         }
-        if (is_quotation_mark(text[0]))
+        if (auto v = read_quoted_string(text))
         {
-            return read_quoted_string(text);
+            return *v;
         }
 
         const auto b = std::begin(text);
