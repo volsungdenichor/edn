@@ -9,6 +9,7 @@
 #include <iterator>
 #include <limits>
 #include <map>
+#include <memory>
 #include <numeric>
 #include <optional>
 #include <set>
@@ -46,11 +47,11 @@ using value_t = std::variant<
     character_t,
     symbol_t,
     keyword_t,
-    tagged_element_t,
     list_t,
     vector_t,
     set_t,
-    map_t>;
+    map_t,
+    tagged_element_t>;
 
 enum class type_t
 {
@@ -62,11 +63,11 @@ enum class type_t
     character,
     symbol,
     keyword,
-    tagged_element,
     list,
     vector,
     set,
     map,
+    tagged_element,
 };
 
 inline std::ostream& operator<<(std::ostream& os, const type_t item)
@@ -83,11 +84,11 @@ inline std::ostream& operator<<(std::ostream& os, const type_t item)
         CASE(character);
         CASE(symbol);
         CASE(keyword);
-        CASE(tagged_element);
         CASE(list);
         CASE(vector);
         CASE(set);
         CASE(map);
+        CASE(tagged_element);
 #undef CASE
         default: break;
     }
@@ -231,17 +232,6 @@ struct keyword_t : public std::string
     }
 };
 
-struct tagged_element_t : public std::string
-{
-    using base_t = std::string;
-    using base_t::base_t;
-
-    friend std::ostream& operator<<(std::ostream& os, const tagged_element_t& item)
-    {
-        return os << "#" << (const base_t&)item;
-    }
-};
-
 struct list_t : public std::vector<value_t>
 {
     using base_t = std::vector<value_t>;
@@ -298,6 +288,68 @@ struct map_t : public std::map<value_t, value_t>
     }
 };
 
+struct tagged_element_t
+{
+    symbol_t m_tag;
+    std::unique_ptr<value_t> m_element;
+
+    tagged_element_t(symbol_t tag, value_t value)
+        : m_tag(std::move(tag))
+        , m_element(std::make_unique<value_t>(std::move(value)))
+    {
+    }
+
+    tagged_element_t(const tagged_element_t& other) : tagged_element_t(other.tag(), other.element())
+    {
+    }
+
+    tagged_element_t(tagged_element_t&& other) noexcept = default;
+
+    tagged_element_t() : tagged_element_t(symbol_t{}, value_t{})
+    {
+    }
+
+    const symbol_t& tag() const
+    {
+        return m_tag;
+    }
+
+    const value_t& element() const
+    {
+        return *m_element;
+    }
+
+    friend bool operator==(const tagged_element_t& lhs, const tagged_element_t& rhs)
+    {
+        return std::tie(lhs.tag(), lhs.element()) == std::tie(rhs.tag(), rhs.element());
+    }
+
+    friend bool operator!=(const tagged_element_t& lhs, const tagged_element_t& rhs)
+    {
+        return !(lhs == rhs);
+    }
+
+    friend bool operator<(const tagged_element_t& lhs, const tagged_element_t& rhs)
+    {
+        return std::tie(lhs.tag(), lhs.element()) < std::tie(rhs.tag(), rhs.element());
+    }
+
+    friend bool operator>(const tagged_element_t& lhs, const tagged_element_t& rhs)
+    {
+        return rhs < lhs;
+    }
+
+    friend bool operator<=(const tagged_element_t& lhs, const tagged_element_t& rhs)
+    {
+        return !(lhs > rhs);
+    }
+
+    friend bool operator>=(const tagged_element_t& lhs, const tagged_element_t& rhs)
+    {
+        return !(lhs < rhs);
+    }
+};
+
 inline type_t type(const value_t& value)
 {
     return std::visit(
@@ -310,20 +362,13 @@ inline type_t type(const value_t& value)
             [](const string_t&) { return type_t::string; },
             [](const symbol_t&) { return type_t::symbol; },
             [](const keyword_t&) { return type_t::keyword; },
-            [](const tagged_element_t&) { return type_t::tagged_element; },
             [](const list_t&) { return type_t::list; },
             [](const vector_t&) { return type_t::vector; },
             [](const set_t&) { return type_t::set; },
             [](const map_t&) { return type_t::map; },
+            [](const tagged_element_t&) { return type_t::tagged_element; },
         },
         value);
-}
-
-template <class T>
-inline type_t type()
-{
-    static const value_t temp = T{};
-    return type(temp);  // TODO
 }
 
 template <class T>
@@ -340,7 +385,7 @@ const T& as(const value_t& value)
         return *res;
     }
     throw detail::exception<std::runtime_error>(
-        "Invalid type: expected <", type<T>(), ">, actual '", value, "' of type <", type(value), ">");
+        "Invalid type: expected <", "TODO", ">, actual '", value, "' of type <", type(value), ">");
 }
 
 static const inline std::vector<std::tuple<char, std::string>> character_names = {
@@ -374,14 +419,19 @@ inline std::ostream& operator<<(std::ostream& os, const value_t& item)
             [&](const string_t& v) { os << v; },
             [&](const symbol_t& v) { os << v; },
             [&](const keyword_t& v) { os << v; },
-            [&](const tagged_element_t& v) { os << v; },
             [&](const list_t& v) { os << v; },
             [&](const vector_t& v) { os << v; },
             [&](const set_t& v) { os << v; },
             [&](const map_t& v) { os << v; },
+            [&](const tagged_element_t& v) { os << v; },
         },
         item);
     return os;
+}
+
+inline std::ostream& operator<<(std::ostream& os, const tagged_element_t& item)
+{
+    return os << "#" << item.tag() << " " << item.element();
 }
 
 inline bool operator==(const value_t& lhs, const value_t& rhs)
@@ -396,11 +446,11 @@ inline bool operator==(const value_t& lhs, const value_t& rhs)
                     [](const string_t& lt, const string_t& rt) { return lt == rt; },
                     [](const symbol_t& lt, const symbol_t& rt) { return lt == rt; },
                     [](const keyword_t& lt, const keyword_t& rt) { return lt == rt; },
-                    [](const tagged_element_t& lt, const tagged_element_t& rt) { return lt == rt; },
                     [](const list_t& lt, const list_t& rt) { return lt == rt; },
                     [](const vector_t& lt, const vector_t& rt) { return lt == rt; },
                     [](const set_t& lt, const set_t& rt) { return lt == rt; },
                     [](const map_t& lt, const map_t& rt) { return lt == rt; },
+                    [](const tagged_element_t& lt, const tagged_element_t& rt) { return lt == rt; },
                     [](const auto& lt, const auto& rt) { return false; } },
         lhs,
         rhs);
@@ -417,11 +467,11 @@ inline bool operator<(const value_t& lhs, const value_t& rhs)
                     [](const string_t& lt, const string_t& rt) { return lt < rt; },
                     [](const symbol_t& lt, const symbol_t& rt) { return lt < rt; },
                     [](const keyword_t& lt, const keyword_t& rt) { return lt < rt; },
-                    [](const tagged_element_t& lt, const tagged_element_t& rt) { return lt < rt; },
                     [](const list_t& lt, const list_t& rt) { return lt < rt; },
                     [](const vector_t& lt, const vector_t& rt) { return lt < rt; },
                     [](const set_t& lt, const set_t& rt) { return lt < rt; },
                     [](const map_t& lt, const map_t& rt) { return lt < rt; },
+                    [](const tagged_element_t& lt, const tagged_element_t& rt) { return lt < rt; },
                     [](const auto& lt, const auto& rt) { return false; } },
         lhs,
         rhs);
@@ -688,11 +738,6 @@ private:
         return tok[0] == ':' ? std::optional<value_t>{ keyword_t{ tok.substr(1).c_str() } } : std::nullopt;
     }
 
-    static auto as_tagged(const token_t& tok) -> std::optional<value_t>
-    {
-        return tok[0] == '#' ? std::optional<value_t>{ tagged_element_t{ tok.substr(1).c_str() } } : std::nullopt;
-    }
-
     static auto read_atom(const token_t& tok) -> value_t
     {
         using handler_t = std::optional<value_t> (*)(const token_t&);
@@ -777,7 +822,8 @@ private:
             }
             else if (const auto v = try_as<symbol_t>(rest))
             {
-                return tagged_element_t{ v->begin(), v->end() };
+                value_t val = read_from(tokens, read_from_mode::standard);
+                return tagged_element_t{ *v, std::move(val) };
             }
             else
             {

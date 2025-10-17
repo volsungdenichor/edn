@@ -193,18 +193,42 @@ struct edn::codec<card> : struct_codec<card>
     }
 };
 
+void print(std::ostream& os, const edn::value_t& item, std::size_t level = 0)
+{
+    const auto tab = std::string(level * 2, ' ');
+    std::visit(
+        edn::overloaded{ [&](const edn::vector_t& v)
+                         {
+                             os << tab << '[' << "\n";
+                             for (const edn::value_t& it : v)
+                             {
+                                 print(os, it, level + 1);
+                             }
+                             os << tab << ']' << "\n";
+                         },
+                         [&](const edn::map_t& v)
+                         {
+                             os << tab << '{' << "\n";
+                             for (const auto& it : v)
+                             {
+                                 print(os, it.first, level + 1);
+                                 print(os, it.second, level + 1);
+                             }
+                             os << tab << '}' << "\n";
+                         },
+                         [&](const auto& v) { os << tab << v; }
+
+        },
+        item);
+    os << "\n";
+}
+
 void run(const std::vector<std::string>& args)
 {
-    const suit s = suit::club;
-    const rank r = rank::ace;
-
-    std::cout << "expr: "
-              << edn::encode(edn::decode<std::vector<card>>(
-                     edn::parse(" [{:rank :queen :suit :diamond} {:rank :ace :suit :spade}]")))
-              << "\n";
-    std::cout << "expr: "
-              << edn::encode(edn::decode<std::vector<std::string>>(edn::parse(" [\"alpha\" \"beta\" \"gamma\" \"delta\"]")))
-              << "\n";
+    print(
+        std::cout,
+        edn::parse(" [#person {:first-name \"Adam\" :last-name \"Mickiewicz\"} #person {:first-name \"Juliuesz\" :last-name "
+                   "\"Slowacki\"}]"));
 }
 
 int main(int argc, char** argv)
