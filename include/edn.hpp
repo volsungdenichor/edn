@@ -23,6 +23,52 @@
 namespace edn
 {
 
+namespace detail
+{
+template <class T>
+struct box_t
+{
+    std::unique_ptr<T> m_value;
+
+    box_t(T value) : m_value(std::make_unique<T>(std::move(value)))
+    {
+    }
+
+    box_t(const box_t& other) : box_t(other.get())
+    {
+    }
+
+    box_t(box_t&&) noexcept = default;
+
+    box_t& operator=(box_t other)
+    {
+        std::move(m_value, other.m_value);
+        return *this;
+    }
+
+    operator const T&() const
+    {
+        return get();
+    }
+
+    operator T&&() &&
+    {
+        return std::move(*this).get();
+    }
+
+    const T& get() const&
+    {
+        return *m_value;
+    }
+
+    T&& get() &&
+    {
+        return std::move(*m_value);
+    }
+};
+
+}  // namespace detail
+
 using boolean_t = bool;
 using integer_t = std::int32_t;
 using floating_point_t = double;
@@ -291,23 +337,7 @@ struct map_t : public std::map<value_t, value_t>
 struct tagged_element_t
 {
     symbol_t m_tag;
-    std::unique_ptr<value_t> m_element;
-
-    tagged_element_t(symbol_t tag, value_t value)
-        : m_tag(std::move(tag))
-        , m_element(std::make_unique<value_t>(std::move(value)))
-    {
-    }
-
-    tagged_element_t(const tagged_element_t& other) : tagged_element_t(other.tag(), other.element())
-    {
-    }
-
-    tagged_element_t(tagged_element_t&& other) noexcept = default;
-
-    tagged_element_t() : tagged_element_t(symbol_t{}, value_t{})
-    {
-    }
+    detail::box_t<value_t> m_element;
 
     const symbol_t& tag() const
     {
@@ -316,7 +346,7 @@ struct tagged_element_t
 
     const value_t& element() const
     {
-        return *m_element;
+        return m_element;
     }
 
     friend bool operator==(const tagged_element_t& lhs, const tagged_element_t& rhs)
