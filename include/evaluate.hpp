@@ -50,6 +50,12 @@ struct stack_t
 
 constexpr inline struct evaluate_fn
 {
+    auto operator()(const value_t& value, stack_t& stack) const -> value_t
+    {
+        return eval(value, stack);
+    }
+
+private:
     struct clojure_t
     {
         struct overload_t
@@ -218,7 +224,11 @@ constexpr inline struct evaluate_fn
 
     auto do_eval(const value_t& value, stack_t& stack) const -> value_t
     {
-        if (auto v = value.symbol().get())
+        if (auto v = value.quoted_element().get())
+        {
+            return v->element();
+        }
+        else if (auto v = value.symbol().get())
         {
             return stack[*v];
         }
@@ -313,11 +323,6 @@ constexpr inline struct evaluate_fn
         {
             throw std::runtime_error{ str("Error on evaluating `", value, "`: ", ex.what()) };
         }
-    }
-
-    auto operator()(const value_t& value, stack_t& stack) const -> value_t
-    {
-        return eval(value, stack);
     }
 } evaluate{};
 

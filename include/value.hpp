@@ -146,15 +146,30 @@ struct map_t : public std::map<value_t, value_t>
 
 struct tagged_element_t
 {
-    symbol_t symbol;
-    box_t<value_t> element;
+    symbol_t m_symbol;
+    box_t<value_t> m_element;
+
+    const symbol_t& symbol() const
+    {
+        return m_symbol;
+    }
+
+    const value_t& element() const
+    {
+        return m_element.get();
+    }
 
     friend std::ostream& operator<<(std::ostream& os, const tagged_element_t& item);
 };
 
 struct quoted_element_t
 {
-    box_t<value_t> element;
+    box_t<value_t> m_element;
+
+    const value_t& element() const
+    {
+        return m_element.get();
+    }
 
     friend std::ostream& operator<<(std::ostream& os, const quoted_element_t& item);
 };
@@ -576,12 +591,12 @@ inline std::ostream& operator<<(std::ostream& os, const set_t& item)
 
 inline std::ostream& operator<<(std::ostream& os, const tagged_element_t& item)
 {
-    return os << "#" << item.symbol << " " << item.element;
+    return os << "#" << item.symbol() << " " << item.element();
 }
 
 inline std::ostream& operator<<(std::ostream& os, const quoted_element_t& item)
 {
-    return os << "'" << item.element;
+    return os << "'" << item.element();
 }
 
 inline std::ostream& operator<<(std::ostream& os, const map_t& item)
@@ -651,11 +666,11 @@ struct eq_visitor
     }
     bool operator()(const tagged_element_t& lt, const tagged_element_t& rt) const
     {
-        return lt.element.get() == rt.element.get();
+        return lt.element() == rt.element();
     }
     bool operator()(const quoted_element_t& lt, const quoted_element_t& rt) const
     {
-        return lt.element.get() == rt.element.get();
+        return lt.element() == rt.element();
     }
 
     template <class L, class R>
@@ -717,11 +732,11 @@ struct lt_visitor
     }
     bool operator()(const tagged_element_t& lt, const tagged_element_t& rt) const
     {
-        return lt.element.get() < rt.element.get();
+        return lt.element() < rt.element();
     }
     bool operator()(const quoted_element_t& lt, const quoted_element_t& rt) const
     {
-        return lt.element.get() < rt.element.get();
+        return lt.element() < rt.element();
     }
 
     template <class L, class R>
