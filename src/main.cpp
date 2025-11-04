@@ -105,7 +105,7 @@ void run(const std::vector<std::string>& args)
 
             return result;
         });
-    const path_t path = args.size() >= 2 ? path_t{ args.at(1) } : path_t{ "../src/program.clj" };
+    const path_t path = args.size() >= 2 ? path_t{ args.at(1) } : path_t{ "../src/program.txt" };
 
     const std::string file_content = load_file(path);
 

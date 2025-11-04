@@ -14,3 +14,9 @@
 (print (get_info #{:A :B :C}))
 (print (get_info {:name "Gumball"}))
 (print (get_info [:A :B :C]))
+
+(let [x 3.0 y 10.0]
+  (print x " + " y " = " (+ x y))
+  (print x " - " y " = " (- x y))
+  (print x " * " y " = " (* x y))
+  (print x " / " y " = " (/ x y)))
