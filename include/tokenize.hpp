@@ -6,7 +6,7 @@
 namespace edn
 {
 
-enum class token_type
+enum class token_type_t
 {
     quoted_string,
     integer,
@@ -19,25 +19,25 @@ enum class token_type
     quote
 };
 
-inline std::ostream& operator<<(std::ostream& os, const token_type item)
+inline std::ostream& operator<<(std::ostream& os, const token_type_t item)
 {
     switch (item)
     {
-        case token_type::quoted_string: return os << "quoted_string";
-        case token_type::integer: return os << "integer";
-        case token_type::floating_point: return os << "floating_point";
-        case token_type::character: return os << "character";
-        case token_type::keyword: return os << "keyword";
-        case token_type::symbol: return os << "symbol";
-        case token_type::parenthesis: return os << "parenthesis";
-        case token_type::hash: return os << "hash";
-        case token_type::quote: return os << "quote";
+        case token_type_t::quoted_string: return os << "quoted_string";
+        case token_type_t::integer: return os << "integer";
+        case token_type_t::floating_point: return os << "floating_point";
+        case token_type_t::character: return os << "character";
+        case token_type_t::keyword: return os << "keyword";
+        case token_type_t::symbol: return os << "symbol";
+        case token_type_t::parenthesis: return os << "parenthesis";
+        case token_type_t::hash: return os << "hash";
+        case token_type_t::quote: return os << "quote";
         default: break;
     }
     return os;
 }
 
-using token_t = std::pair<parsing::token_t, token_type>;
+using token_t = std::pair<parsing::token_t, token_type_t>;
 
 constexpr inline struct tokenizer_fn
 {
@@ -86,18 +86,18 @@ private:
         parsing::many(parsing::digit));
     static const inline auto quote = parsing::character('\'');
 
-    static const inline auto parsers = std::vector<std::pair<parsing::parser_t, std::optional<token_type>>>{
+    static const inline auto parsers = std::vector<std::pair<parsing::parser_t, std::optional<token_type_t>>>{
         { space, std::nullopt },
         { comment, std::nullopt },
-        { hash, token_type::hash },
-        { quote, token_type::quote },
-        { floating_point, token_type::floating_point },
-        { integer, token_type::integer },
-        { quoted_string, token_type::quoted_string },
-        { character, token_type::character },
-        { keyword, token_type::keyword },
-        { symbol, token_type::symbol },
-        { parenthesis, token_type::parenthesis },
+        { hash, token_type_t::hash },
+        { quote, token_type_t::quote },
+        { floating_point, token_type_t::floating_point },
+        { integer, token_type_t::integer },
+        { quoted_string, token_type_t::quoted_string },
+        { character, token_type_t::character },
+        { keyword, token_type_t::keyword },
+        { symbol, token_type_t::symbol },
+        { parenthesis, token_type_t::parenthesis },
     };
 } tokenize{};
 

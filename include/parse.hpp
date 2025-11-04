@@ -51,39 +51,40 @@ private:
         {
             return value_t();
         }
-        const token_t token = pop_front(tokens);
-        if (token.first.value == "'")
+        const token_t token_info = pop_front(tokens);
+        const auto& [token, token_type] = token_info;
+        if (token_type == token_type_t::quote)
         {
             return quoted_element_t{ read_from(tokens) };
         }
-        if (token.first.value == "(")
+        if (token.value == "(")
         {
             const std::vector<value_t> items = read_until(tokens, ")");
             return list_t{ items.begin(), items.end() };
         }
-        else if (token.first.value == "[")
+        else if (token.value == "[")
         {
             const std::vector<value_t> items = read_until(tokens, "]");
             return vector_t{ items.begin(), items.end() };
         }
-        else if (token.first.value == "#")
+        else if (token_type == token_type_t::hash)
         {
-            const token_t next_token = pop_front(tokens);
-            if (next_token.first.value == "{")
+            const auto& [next_token, next_token_type] = pop_front(tokens);
+            if (next_token.value == "{")
             {
                 const std::vector<value_t> items = read_until(tokens, "}");
                 return set_t{ items.begin(), items.end() };
             }
             else
             {
-                return tagged_element_t{ symbol_t{ next_token.first.value.c_str() }, read_from(tokens) };
+                return tagged_element_t{ symbol_t{ next_token.value.c_str() }, read_from(tokens) };
             }
         }
-        else if (token.first.value == "{")
+        else if (token.value == "{")
         {
             return to_map(read_until(tokens, "}"));
         }
-        return read_atom(token);
+        return read_atom(token_info);
     }
 
     static auto read_until(std::vector<token_t>& tokens, const std::string& delimiter) -> std::vector<value_t>
@@ -126,49 +127,50 @@ private:
         return value;
     }
 
-    static auto read_atom(const token_t& token) -> value_t
+    static auto read_atom(const token_t& token_info) -> value_t
     {
-        if (token.second == token_type::integer)
+        const auto& [token, token_type] = token_info;
+        if (token_type == token_type_t::integer)
         {
-            return integer_t{ parse<int>(token.first.value) };
+            return integer_t{ parse<int>(token.value) };
         }
-        else if (token.second == token_type::floating_point)
+        else if (token_type == token_type_t::floating_point)
         {
-            return floating_point_t{ parse<double>(token.first.value) };
+            return floating_point_t{ parse<double>(token.value) };
         }
-        else if (token.second == token_type::character)
+        else if (token_type == token_type_t::character)
         {
-            if (token.first.value.size() == 1 && std::isprint(token.first.value[0]))
+            if (token.value.size() == 1 && std::isprint(token.value[0]))
             {
-                return character_t{ token.first.value[0] };
+                return character_t{ token.value[0] };
             }
             for (const auto& [symbol, name] : character_names)
             {
-                if (token.first.value == name)
+                if (token.value == name)
                 {
                     return character_t{ symbol };
                 }
             }
-            throw std::runtime_error{ str("Unhandled character ", token.first.value) };
+            throw std::runtime_error{ str("Unhandled character ", token.value) };
         }
-        else if (token.second == token_type::keyword)
+        else if (token_type == token_type_t::keyword)
         {
-            return keyword_t{ token.first.value.c_str() };
+            return keyword_t{ token.value.c_str() };
         }
-        else if (token.second == token_type::quoted_string)
+        else if (token_type == token_type_t::quoted_string)
         {
-            return string_t{ token.first.value };
+            return string_t{ token.value };
         }
         static const auto registered_words = std::map<std::string, value_t>{
             { "nil", nil_t{} },
             { "true", boolean_t{ true } },
             { "false", boolean_t{ false } },
         };
-        if (const auto word = registered_words.find(token.first.value); word != registered_words.end())
+        if (const auto word = registered_words.find(token.value); word != registered_words.end())
         {
             return word->second;
         }
-        return symbol_t{ token.first.value.c_str() };
+        return symbol_t{ token.value.c_str() };
     }
 } parse{};
 
