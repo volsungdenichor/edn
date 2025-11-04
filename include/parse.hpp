@@ -18,7 +18,18 @@ constexpr inline struct parse_fn
         {
             values.push_back(read_from(tokens));
         }
-        return values.at(0);
+        if (values.empty())
+        {
+            return nil_t{};
+        }
+        else if (values.size() == 1)
+        {
+            return values.at(0);
+        }
+        list_t result;
+        result.push_back(symbol_t{ "do" });
+        result.insert(result.end(), values.begin(), values.end());
+        return result;
     }
 
 private:
@@ -138,7 +149,7 @@ private:
                     return character_t{ symbol };
                 }
             }
-            throw std::runtime_error{ "Unhandled character" };
+            throw std::runtime_error{ str("Unhandled character ", token.first.value) };
         }
         else if (token.second == token_type::keyword)
         {

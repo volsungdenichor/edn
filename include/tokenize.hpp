@@ -15,7 +15,8 @@ enum class token_type
     keyword,
     symbol,
     parenthesis,
-    hash
+    hash,
+    quote
 };
 
 inline std::ostream& operator<<(std::ostream& os, const token_type item)
@@ -30,6 +31,7 @@ inline std::ostream& operator<<(std::ostream& os, const token_type item)
         case token_type::symbol: return os << "symbol";
         case token_type::parenthesis: return os << "parenthesis";
         case token_type::hash: return os << "hash";
+        case token_type::quote: return os << "quote";
         default: break;
     }
     return os;
@@ -41,41 +43,8 @@ constexpr inline struct tokenizer_fn
 {
     auto operator()(std::string_view text) const -> std::vector<token_t>
     {
-        static const auto is_parenthesis = parsing::one_of("()[]{}");
-        static const auto hash = parsing::character('#');
-        static const auto parenthesis = parsing::character(is_parenthesis);
-        static const auto comment = parsing::character(';') >> parsing::many(parsing::character(parsing::ne('\n')));
-        static const auto quoted_string = parsing::quoted_string();
-        static const auto symbol = parsing::sequence(
-            parsing::character([](char ch)
-                               { return !is_parenthesis(ch) && !parsing::is_space(ch) && !parsing::is_digit(ch); }),
-            parsing::many(parsing::character([](char ch) { return !is_parenthesis(ch) && !parsing::is_space(ch); })));
-        static const auto keyword = parsing::character(':') >> symbol;
-        static const auto character = parsing::character('\\') >> parsing::at_least(1)(parsing::graph);
-        static const auto space = parsing::character([](char ch) { return parsing::is_space(ch) || ch == ','; });
-        static const auto integer = parsing::sequence(
-            parsing::optional(parsing::any(parsing::character('+'), parsing::character('-'))),
-            parsing::at_least(1)(parsing::digit));
-        static const auto floating_point = parsing::sequence(
-            parsing::optional(parsing::any(parsing::character('+'), parsing::character('-'))),
-            parsing::at_least(1)(parsing::digit),
-            parsing::character('.'),
-            parsing::many(parsing::digit));
-
         auto tokens = std::vector<token_t>{};
         auto stream = parsing::stream_t{ text };
-        static const auto parsers = std::vector<std::pair<parsing::parser_t, std::optional<token_type>>>{
-            { space, std::nullopt },
-            { comment, std::nullopt },
-            { hash, token_type::hash },
-            { floating_point, token_type::floating_point },
-            { integer, token_type::integer },
-            { quoted_string, token_type::quoted_string },
-            { character, token_type::character },
-            { keyword, token_type::keyword },
-            { symbol, token_type::symbol },
-            { parenthesis, token_type::parenthesis },
-        };
         while (stream)
         {
             for (const auto& [parser, token_type] : parsers)
@@ -92,6 +61,44 @@ constexpr inline struct tokenizer_fn
         }
         return tokens;
     }
+
+private:
+    static const inline auto is_parenthesis = parsing::one_of("()[]{}");
+    static const inline auto hash = parsing::character('#');
+    static const inline auto parenthesis = parsing::character(is_parenthesis);
+    static const inline auto comment = parsing::character(';') >> parsing::many(parsing::character(parsing::ne('\n')));
+    static const inline auto quoted_string = parsing::quoted_string();
+    static const inline auto symbol = parsing::sequence(
+        parsing::character([](char ch) { return !is_parenthesis(ch) && !parsing::is_space(ch) && !parsing::is_digit(ch); }),
+        parsing::many(parsing::character([](char ch) { return !is_parenthesis(ch) && !parsing::is_space(ch); })));
+    static const inline auto keyword = parsing::character(':') >> symbol;
+    static const inline auto character
+        = parsing::character('\\')
+          >> parsing::at_least(1)(parsing::character([](char ch) { return parsing::is_graph(ch) && !is_parenthesis(ch); }));
+    static const inline auto space = parsing::character([](char ch) { return parsing::is_space(ch) || ch == ','; });
+    static const inline auto integer = parsing::sequence(
+        parsing::optional(parsing::any(parsing::character('+'), parsing::character('-'))),
+        parsing::at_least(1)(parsing::digit));
+    static const inline auto floating_point = parsing::sequence(
+        parsing::optional(parsing::any(parsing::character('+'), parsing::character('-'))),
+        parsing::at_least(1)(parsing::digit),
+        parsing::character('.'),
+        parsing::many(parsing::digit));
+    static const inline auto quote = parsing::character('\'');
+
+    static const inline auto parsers = std::vector<std::pair<parsing::parser_t, std::optional<token_type>>>{
+        { space, std::nullopt },
+        { comment, std::nullopt },
+        { hash, token_type::hash },
+        { quote, token_type::quote },
+        { floating_point, token_type::floating_point },
+        { integer, token_type::integer },
+        { quoted_string, token_type::quoted_string },
+        { character, token_type::character },
+        { keyword, token_type::keyword },
+        { symbol, token_type::symbol },
+        { parenthesis, token_type::parenthesis },
+    };
 } tokenize{};
 
 }  // namespace edn

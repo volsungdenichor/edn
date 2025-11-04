@@ -56,6 +56,62 @@ constexpr inline struct evaluate_fn
     }
 
 private:
+    auto eval(const value_t& value, stack_t& stack) const -> value_t
+    {
+        try
+        {
+            return do_eval(value, stack);
+        }
+        catch (const std::exception& ex)
+        {
+            throw std::runtime_error{ str("Error on evaluating `", value, "`: ", ex.what()) };
+        }
+    }
+
+    auto do_eval(const value_t& value, stack_t& stack) const -> value_t
+    {
+        if (auto v = value.quoted_element().get())
+        {
+            return v->element();
+        }
+        else if (auto v = value.symbol().get())
+        {
+            return stack[*v];
+        }
+        else if (auto v = value.list().get())
+        {
+            return eval_list(*v, stack);
+        }
+        else if (auto v = value.vector().get())
+        {
+            vector_t res;
+            res.reserve(v->size());
+            for (const value_t& item : *v)
+            {
+                res.push_back(do_eval(item, stack));
+            }
+            return res;
+        }
+        else if (auto v = value.set().get())
+        {
+            set_t res;
+            for (const value_t& item : *v)
+            {
+                res.insert(do_eval(item, stack));
+            }
+            return res;
+        }
+        else if (auto v = value.map().get())
+        {
+            map_t res;
+            for (const auto& [key, val] : *v)
+            {
+                res.emplace(do_eval(key, stack), do_eval(val, stack));
+            }
+            return res;
+        }
+        return value;
+    }
     struct clojure_t
     {
         struct overload_t
@@ -97,9 +153,9 @@ private:
 
             for (const overload_t& overload : overloads)
             {
-                const auto [mandatory, variadic] = overload.params();
+                const auto [mandatory, maybe_variadic] = overload.params();
 
-                if (args.size() == mandatory.size() && !variadic)
+                if (args.size() == mandatory.size() && !maybe_variadic)
                 {
                     for (std::size_t i = 0; i < args.size(); ++i)
                     {
@@ -107,7 +163,7 @@ private:
                     }
                     return self.eval_block(overload.body, new_stack);
                 }
-                if (args.size() > mandatory.size() && variadic)
+                if (args.size() > mandatory.size() && maybe_variadic)
                 {
                     list_t tail;
                     for (std::size_t i = 0; i < args.size(); ++i)
@@ -122,7 +178,7 @@ private:
                         }
                     }
 
-                    new_stack.insert(*variadic, tail);
+                    new_stack.insert(*maybe_variadic, tail);
                     return self.eval_block(overload.body, new_stack);
                 }
             }
@@ -222,51 +278,6 @@ private:
         return callable(args);
     }
 
-    auto do_eval(const value_t& value, stack_t& stack) const -> value_t
-    {
-        if (auto v = value.quoted_element().get())
-        {
-            return v->element();
-        }
-        else if (auto v = value.symbol().get())
-        {
-            return stack[*v];
-        }
-        else if (auto v = value.list().get())
-        {
-            return eval_list(*v, stack);
-        }
-        else if (auto v = value.vector().get())
-        {
-            vector_t res;
-            res.reserve(v->size());
-            for (const value_t& item : *v)
-            {
-                res.push_back(do_eval(item, stack));
-            }
-            return res;
-        }
-        else if (auto v = value.set().get())
-        {
-            set_t res;
-            for (const value_t& item : *v)
-            {
-                res.insert(do_eval(item, stack));
-            }
-            return res;
-        }
-        else if (auto v = value.map().get())
-        {
-            map_t res;
-            for (const auto& [key, val] : *v)
-            {
-                res.emplace(do_eval(key, stack), do_eval(val, stack));
-            }
-            return res;
-        }
-        return value;
-    }
-
     auto eval_quote(const std::vector<value_t>& input, stack_t& stack) const -> value_t
     {
         return input[0];
@@ -311,18 +322,6 @@ private:
             input.end(),
             value_t{},
             [&](const value_t&, const value_t& item) -> value_t { return do_eval(item, stack); });
-    }
-
-    auto eval(const value_t& value, stack_t& stack) const -> value_t
-    {
-        try
-        {
-            return do_eval(value, stack);
-        }
-        catch (const std::exception& ex)
-        {
-            throw std::runtime_error{ str("Error on evaluating `", value, "`: ", ex.what()) };
-        }
     }
 } evaluate{};
 
