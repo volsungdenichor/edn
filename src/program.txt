@@ -16,7 +16,8 @@
 (print (get_info [:A :B :C]))
 
 (let [x 3.0 y 10.0]
-  (print x " + " y " = " (+ x y))
-  (print x " - " y " = " (- x y))
-  (print x " * " y " = " (* x y))
-  (print x " / " y " = " (/ x y)))
+  (defn exec [op name] (print x " " name " " y " = " (op x y)))
+  (exec + "+")
+  (exec - "-")
+  (exec * "*")
+  (exec / "/"))
