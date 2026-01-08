@@ -441,10 +441,6 @@ inline auto operator<<(parser_t lhs, parser_t rhs) -> parser_t
 
 inline auto quoted_string() -> parser_t
 {
-    static const auto replace_with = [](std::string value) -> std::function<std::string(std::string)>
-    {  //
-        return [=](std::string) -> std::string { return value; };
-    };
     return character(eq('"')) >> many(any(character(eq('\\')) >> character(eq('\"')), character(ne('"'))))
                                      << character(eq('"'));
 }
