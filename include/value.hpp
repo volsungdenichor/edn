@@ -31,12 +31,11 @@ struct box_t
     using value_type = T;
     std::unique_ptr<value_type> m_ptr;
 
-    box_t(value_type value) : m_ptr(std::make_unique<T>(std::move(value)))
+    box_t(const value_type& value) : m_ptr(std::make_unique<T>(value))
     {
     }
 
-    template <class U, class = std::enable_if_t<std::is_constructible_v<value_type, U>>>
-    box_t(U&& value) : box_t(value_type{ std::forward<U>(value) })
+    box_t(value_type&& value) : m_ptr(std::make_unique<T>(std::move(value)))
     {
     }
 
@@ -444,12 +443,53 @@ struct value_t
 {
     data_type m_data;
 
-    template <class T, class = std::enable_if_t<std::is_constructible_v<data_type, T>>>
-    value_t(T&& value) : m_data(std::move(value))
+    value_t() : m_data(nil_t{})
     {
     }
 
-    value_t() : value_t(nil_t{})
+    value_t(nil_t v) : m_data(std::move(v))
+    {
+    }
+    value_t(integer_t v) : m_data(std::move(v))
+    {
+    }
+    value_t(floating_point_t v) : m_data(std::move(v))
+    {
+    }
+    value_t(boolean_t v) : m_data(std::move(v))
+    {
+    }
+    value_t(character_t v) : m_data(std::move(v))
+    {
+    }
+    value_t(string_t v) : m_data(std::move(v))
+    {
+    }
+    value_t(symbol_t v) : m_data(std::move(v))
+    {
+    }
+    value_t(keyword_t v) : m_data(std::move(v))
+    {
+    }
+    value_t(vector_t v) : m_data(std::move(v))
+    {
+    }
+    value_t(list_t v) : m_data(std::move(v))
+    {
+    }
+    value_t(set_t v) : m_data(std::move(v))
+    {
+    }
+    value_t(map_t v) : m_data(std::move(v))
+    {
+    }
+    value_t(tagged_element_t v) : m_data(std::move(v))
+    {
+    }
+    value_t(quoted_element_t v) : m_data(std::move(v))
+    {
+    }
+    value_t(callable_t v) : m_data(std::move(v))
     {
     }
 
@@ -770,5 +810,242 @@ inline bool operator>=(const value_t& lhs, const value_t& rhs)
 {
     return !(lhs < rhs);
 }
+
+struct pretty_print_visitor
+{
+    std::ostream& os;
+    int m_indent = 0;
+    bool m_compact = false;
+
+    pretty_print_visitor indent() const
+    {
+        return pretty_print_visitor{ os, m_indent + 1, m_compact };
+    }
+
+    pretty_print_visitor unindent() const
+    {
+        return pretty_print_visitor{ os, m_indent - 1, m_compact };
+    }
+
+    void print_indent() const
+    {
+        if (!m_compact)
+        {
+            for (int i = 0; i < m_indent; ++i)
+            {
+                os << "  ";
+            }
+        }
+    }
+
+    void operator()(nil_t) const
+    {
+        os << "nil";
+    }
+    void operator()(integer_t v) const
+    {
+        os << v;
+    }
+    void operator()(floating_point_t v) const
+    {
+        os << v;
+    }
+    void operator()(boolean_t v) const
+    {
+        os << (v ? "true" : "false");
+    }
+    void operator()(character_t v) const
+    {
+        format_character(os, v);
+    }
+    void operator()(const string_t& v) const
+    {
+        os << std::quoted(v);
+    }
+    void operator()(const symbol_t& v) const
+    {
+        os << v;
+    }
+    void operator()(const keyword_t& v) const
+    {
+        os << v;
+    }
+    void operator()(const vector_t& v) const
+    {
+        if (v.empty())
+        {
+            os << "[]";
+            return;
+        }
+
+        os << "[";
+        if (!m_compact)
+        {
+            os << "\n";
+        }
+
+        for (size_t i = 0; i < v.size(); ++i)
+        {
+            if (!m_compact)
+            {
+                indent().print_indent();
+            }
+            else if (i > 0)
+            {
+                os << " ";
+            }
+
+            std::visit(indent(), v[i].m_data);
+
+            if (!m_compact)
+            {
+                os << "\n";
+            }
+        }
+
+        if (!m_compact)
+        {
+            print_indent();
+        }
+        os << "]";
+    }
+    void operator()(const list_t& v) const
+    {
+        if (v.empty())
+        {
+            os << "()";
+            return;
+        }
+
+        os << "(";
+        if (!m_compact)
+        {
+            os << "\n";
+        }
+
+        for (size_t i = 0; i < v.size(); ++i)
+        {
+            if (!m_compact)
+            {
+                indent().print_indent();
+            }
+            else if (i > 0)
+            {
+                os << " ";
+            }
+
+            std::visit(indent(), v[i].m_data);
+
+            if (!m_compact)
+            {
+                os << "\n";
+            }
+        }
+
+        if (!m_compact)
+        {
+            print_indent();
+        }
+        os << ")";
+    }
+    void operator()(const set_t& v) const
+    {
+        if (v.empty())
+        {
+            os << "#{}";
+            return;
+        }
+
+        os << "#{";
+        if (!m_compact)
+        {
+            os << "\n";
+        }
+
+        size_t i = 0;
+        for (const auto& item : v)
+        {
+            if (!m_compact)
+            {
+                indent().print_indent();
+            }
+            else if (i > 0)
+            {
+                os << " ";
+            }
+
+            std::visit(indent(), item.m_data);
+
+            if (!m_compact)
+            {
+                os << "\n";
+            }
+            ++i;
+        }
+
+        if (!m_compact)
+        {
+            print_indent();
+        }
+        os << "}";
+    }
+    void operator()(const map_t& v) const
+    {
+        if (v.empty())
+        {
+            os << "{}";
+            return;
+        }
+
+        os << "{";
+        if (!m_compact)
+        {
+            os << "\n";
+        }
+
+        size_t i = 0;
+        for (const auto& [key, val] : v)
+        {
+            if (!m_compact)
+            {
+                indent().print_indent();
+            }
+            else if (i > 0)
+            {
+                os << " ";
+            }
+
+            std::visit(indent(), key.m_data);
+            os << " ";
+            std::visit(indent(), val.m_data);
+
+            if (!m_compact)
+            {
+                os << "\n";
+            }
+            ++i;
+        }
+
+        if (!m_compact)
+        {
+            print_indent();
+        }
+        os << "}";
+    }
+    void operator()(const tagged_element_t& v) const
+    {
+        os << "#" << v.symbol() << " ";
+        std::visit(*this, v.element().m_data);
+    }
+    void operator()(const quoted_element_t& v) const
+    {
+        os << "'";
+        std::visit(*this, v.element().m_data);
+    }
+    void operator()(const callable_t& v) const
+    {
+        os << "<< callable >>";
+    }
+};
 
 }  // namespace edn
