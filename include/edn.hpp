@@ -1314,7 +1314,7 @@ class parser_t
         }
 
         static const std::vector<std::tuple<std::string_view, value_t>> special_literals = {
-            { "nil", nil_t{} },
+            { "nil", nil },
             { "true", boolean_t{ true } },
             { "false", boolean_t{ false } },
         };
@@ -1657,7 +1657,7 @@ struct parse_fn
         std::vector<value_t> values = read_values(text);
         if (values.empty())
         {
-            return nil_t{};
+            return nil;
         }
         else if (values.size() == 1)
         {
@@ -1665,7 +1665,7 @@ struct parse_fn
         }
         else
         {
-            list_t result;
+            list_t result = {};
             result.push_back(symbol_t{ "do" });
             result.insert(result.end(), values.begin(), values.end());
             return result;
