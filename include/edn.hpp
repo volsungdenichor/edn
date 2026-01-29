@@ -23,17 +23,11 @@ struct box_t
     using value_type = T;
     std::unique_ptr<value_type> m_ptr;
 
-    box_t(const value_type& value) : m_ptr(std::make_unique<T>(value))
-    {
-    }
+    box_t(const value_type& value) : m_ptr(std::make_unique<T>(value)) { }
 
-    box_t(value_type&& value) : m_ptr(std::make_unique<T>(std::move(value)))
-    {
-    }
+    box_t(value_type&& value) : m_ptr(std::make_unique<T>(std::move(value))) { }
 
-    box_t(const box_t& other) : box_t(other.get())
-    {
-    }
+    box_t(const box_t& other) : box_t(other.get()) { }
 
     box_t(box_t&&) noexcept = default;
 
@@ -93,9 +87,7 @@ struct unboxing_visitor
 {
     Visitor m_visitor;
 
-    constexpr unboxing_visitor(Visitor visitor) : m_visitor(std::move(visitor))
-    {
-    }
+    constexpr unboxing_visitor(Visitor visitor) : m_visitor(std::move(visitor)) { }
 
     template <class... Args>
     constexpr auto operator()(Args&&... args) const -> decltype(std::invoke(m_visitor, unbox(std::forward<Args>(args))...))
@@ -267,52 +259,21 @@ struct value_t
 
     data_type m_data;
 
-    value_t() : m_data(nil_t{})
-    {
-    }
-
-    value_t(nil_t v) : m_data(std::move(v))
-    {
-    }
-    value_t(integer_t v) : m_data(std::move(v))
-    {
-    }
-    value_t(floating_point_t v) : m_data(std::move(v))
-    {
-    }
-    value_t(boolean_t v) : m_data(std::move(v))
-    {
-    }
-    value_t(character_t v) : m_data(std::move(v))
-    {
-    }
-    value_t(string_t v) : m_data(std::move(v))
-    {
-    }
-    value_t(symbol_t v) : m_data(std::move(v))
-    {
-    }
-    value_t(keyword_t v) : m_data(std::move(v))
-    {
-    }
-    value_t(vector_t v) : m_data(std::move(v))
-    {
-    }
-    value_t(list_t v) : m_data(std::move(v))
-    {
-    }
-    value_t(set_t v) : m_data(std::move(v))
-    {
-    }
-    value_t(map_t v) : m_data(std::move(v))
-    {
-    }
-    value_t(tagged_element_t v) : m_data(std::move(v))
-    {
-    }
-    value_t(quoted_element_t v) : m_data(std::move(v))
-    {
-    }
+    value_t() : m_data(nil_t{}) { }
+    value_t(nil_t v) : m_data(std::move(v)) { }
+    value_t(integer_t v) : m_data(std::move(v)) { }
+    value_t(floating_point_t v) : m_data(std::move(v)) { }
+    value_t(boolean_t v) : m_data(std::move(v)) { }
+    value_t(character_t v) : m_data(std::move(v)) { }
+    value_t(string_t v) : m_data(std::move(v)) { }
+    value_t(symbol_t v) : m_data(std::move(v)) { }
+    value_t(keyword_t v) : m_data(std::move(v)) { }
+    value_t(vector_t v) : m_data(std::move(v)) { }
+    value_t(list_t v) : m_data(std::move(v)) { }
+    value_t(set_t v) : m_data(std::move(v)) { }
+    value_t(map_t v) : m_data(std::move(v)) { }
+    value_t(tagged_element_t v) : m_data(std::move(v)) { }
+    value_t(quoted_element_t v) : m_data(std::move(v)) { }
 
     value_t(const value_t&) = default;
     value_t(value_t&&) noexcept = default;
@@ -930,6 +891,12 @@ class pretty_printer
         return *this;
     }
 
+    template <class T>
+    static bool is_compact(const T& item)
+    {
+        return item.size() <= 3 && std::all_of(item.begin(), item.end(), is_simple_value);
+    }
+
     void print_vector(const vector_t& item, bool inline_mode)
     {
         os << write_ansi(&color_scheme::bracket) << "[" << write_ansi(&color_scheme::reset);
@@ -940,8 +907,7 @@ class pretty_printer
             return;
         }
 
-        const bool should_inline
-            = inline_mode || (item.size() <= 3 && std::all_of(item.begin(), item.end(), is_simple_value));
+        const bool should_inline = inline_mode || is_compact(item);
 
         if (should_inline && estimate_length(value_t(item)) < m_options.max_inline_length)
         {
@@ -979,8 +945,7 @@ class pretty_printer
             return;
         }
 
-        const bool should_inline
-            = inline_mode || (item.size() <= 3 && std::all_of(item.begin(), item.end(), is_simple_value));
+        const bool should_inline = inline_mode || is_compact(item);
 
         if (should_inline && estimate_length(value_t(item)) < m_options.max_inline_length)
         {
@@ -1018,8 +983,7 @@ class pretty_printer
             return;
         }
 
-        const bool should_inline
-            = inline_mode || (item.size() <= 3 && std::all_of(item.begin(), item.end(), is_simple_value));
+        const bool should_inline = inline_mode || is_compact(item);
 
         if (should_inline && estimate_length(value_t(item)) < m_options.max_inline_length)
         {
@@ -1141,9 +1105,7 @@ class pretty_printer
     }
 
 public:
-    pretty_printer(std::ostream& os, const pretty_print_options& options) : os{ os }, m_options{ options }
-    {
-    }
+    pretty_printer(std::ostream& os, const pretty_print_options& options) : os{ os }, m_options{ options } { }
 
     std::ostream& operator()(const value_t& item)
     {
@@ -1212,9 +1174,7 @@ class stream_t
     location_t m_location = { 0, 0 };
 
 public:
-    stream_t(std::string_view content) : m_content(content)
-    {
-    }
+    stream_t(std::string_view content) : m_content(content) { }
 
     bool eof() const
     {
@@ -1609,9 +1569,7 @@ class parser_t
     }
 
 public:
-    parser_t(stream_t& stream) : m_stream(stream)
-    {
-    }
+    parser_t(stream_t& stream) : m_stream(stream) { }
 
     value_t parse_value()
     {
