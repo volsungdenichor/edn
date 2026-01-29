@@ -1400,12 +1400,14 @@ class parser_t
         return keyword_t{ name.c_str() };
     }
 
-    value_t parse_list()
+    template <class T>
+    std::pair<T, location_t> parse_collection(char open_delim, char close_delim, const std::string& error_message)
     {
+        (void)open_delim;
         const location_t start_loc = m_stream.location();
         m_stream.get();  // consume '('
 
-        list_t result = {};
+        T result = {};
 
         while (true)
         {
@@ -1413,105 +1415,50 @@ class parser_t
 
             if (m_stream.eof())
             {
-                throw parse_error("Unterminated list", start_loc);
+                throw parse_error(error_message, start_loc);
             }
 
-            if (m_stream.peek().value == ')')
+            if (m_stream.peek().value == close_delim)
             {
                 m_stream.get();
-                return result;
+                return { std::move(result), start_loc };
             }
 
             result.push_back(parse_value());
         }
+    }
+
+    value_t parse_list()
+    {
+        return parse_collection<list_t>('(', ')', "Unterminated list").first;
     }
 
     value_t parse_vector()
     {
-        const location_t start_loc = m_stream.location();
-        m_stream.get();  // consume '['
-
-        vector_t result = {};
-
-        while (true)
-        {
-            m_stream.skip_whitespace_and_comments();
-
-            if (m_stream.eof())
-            {
-                throw parse_error("Unterminated vector", start_loc);
-            }
-
-            if (m_stream.peek().value == ']')
-            {
-                m_stream.get();
-                return result;
-            }
-
-            result.push_back(parse_value());
-        }
-    }
-
-    value_t parse_map()
-    {
-        const location_t start_loc = m_stream.location();
-        m_stream.get();  // consume '{'
-
-        std::vector<value_t> items = {};
-
-        while (true)
-        {
-            m_stream.skip_whitespace_and_comments();
-
-            if (m_stream.eof())
-            {
-                throw parse_error("Unterminated map", start_loc);
-            }
-
-            if (m_stream.peek().value == '}')
-            {
-                m_stream.get();
-
-                if (items.size() % 2 != 0)
-                {
-                    throw parse_error("Map requires an even number of elements", start_loc);
-                }
-
-                map_t result;
-                for (std::size_t i = 0; i < items.size(); i += 2)
-                {
-                    result[items[i + 0]] = items[i + 1];
-                }
-                return result;
-            }
-
-            items.push_back(parse_value());
-        }
+        return parse_collection<vector_t>('[', ']', "Unterminated vector").first;
     }
 
     value_t parse_set()
     {
-        const location_t start_loc = m_stream.location();
+        vector_t items = parse_collection<vector_t>('{', '}', "Unterminated set").first;
+        return set_t{ items.begin(), items.end() };
+    }
 
-        vector_t items = {};
+    value_t parse_map()
+    {
+        auto&& [items, start_loc] = parse_collection<vector_t>('{', '}', "Unterminated map");
 
-        while (true)
+        if (items.size() % 2 != 0)
         {
-            m_stream.skip_whitespace_and_comments();
-
-            if (m_stream.eof())
-            {
-                throw parse_error("Unterminated set", start_loc);
-            }
-
-            if (m_stream.peek().value == '}')
-            {
-                m_stream.get();
-                return set_t{ items.begin(), items.end() };
-            }
-
-            items.push_back(parse_value());
+            throw parse_error("Map requires an even number of elements", start_loc);
         }
+
+        map_t result = {};
+        for (std::size_t i = 0; i < items.size(); i += 2)
+        {
+            result[items[i + 0]] = items[i + 1];
+        }
+        return result;
     }
 
     value_t parse_hash()
