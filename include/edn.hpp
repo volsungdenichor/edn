@@ -804,7 +804,7 @@ struct pretty_print_options
     int indent_size = 2;
     std::optional<color_scheme> colors = color_scheme{};
     int max_inline_length = 60;
-    bool compact_maps = false;
+    bool compact_maps = true;
 };
 
 namespace detail
@@ -1047,14 +1047,7 @@ class pretty_printer
             current_indent += indent_increment;
             for (auto it = item.begin(); it != item.end(); ++it)
             {
-                if (it == item.begin() && m_options.compact_maps)
-                {
-                    os << " ";
-                }
-                else
-                {
-                    write_newline().write_indent();
-                }
+                write_newline().write_indent();
                 print_value(it->first, true);
                 os << " ";
                 print_value(it->second, true);

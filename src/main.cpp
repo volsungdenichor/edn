@@ -73,6 +73,17 @@ void demo_parser()
      :scores [95 87 92]}
     )");
 
+    test_parse(R"(
+    [{:person {:name "Alice"
+              :age 30
+              :hobbies ["reading" "coding"]}
+     :scores [95 87 92]}
+     {:person {:name "Alice"
+              :age 30
+              :hobbies ["reading" "coding"]}
+     :scores [95 87 92]}]
+    )");
+
     // Error examples - these will show line numbers
     test_parse("[1 2 3");                 // Unterminated vector
     test_parse("{:a 1 :b}");              // Odd number of map elements
