@@ -897,7 +897,7 @@ class pretty_printer
         return item.size() <= 3 && std::all_of(item.begin(), item.end(), is_simple_value);
     }
 
-    void print_vector(const vector_t& item, bool inline_mode)
+    void print(const vector_t& item, bool inline_mode)
     {
         os << write_ansi(&color_scheme::bracket) << "[" << write_ansi(&color_scheme::reset);
 
@@ -935,7 +935,7 @@ class pretty_printer
         os << write_ansi(&color_scheme::bracket) << "]" << write_ansi(&color_scheme::reset);
     }
 
-    void print_list(const list_t& item, bool inline_mode)
+    void print(const list_t& item, bool inline_mode)
     {
         os << write_ansi(&color_scheme::parenthesis) << "(" << write_ansi(&color_scheme::reset);
 
@@ -973,7 +973,7 @@ class pretty_printer
         os << write_ansi(&color_scheme::parenthesis) << ")" << write_ansi(&color_scheme::reset);
     }
 
-    void print_set(const set_t& item, bool inline_mode)
+    void print(const set_t& item, bool inline_mode)
     {
         os << write_ansi(&color_scheme::brace) << "#{" << write_ansi(&color_scheme::reset);
 
@@ -1011,7 +1011,7 @@ class pretty_printer
         os << write_ansi(&color_scheme::brace) << "}" << write_ansi(&color_scheme::reset);
     }
 
-    void print_map(const map_t& item, bool inline_mode)
+    void print(const map_t& item, bool inline_mode)
     {
         os << write_ansi(&color_scheme::brace) << "{" << write_ansi(&color_scheme::reset);
 
@@ -1063,38 +1063,35 @@ class pretty_printer
     {
         if (const auto v = item.if_vector())
         {
-            print_vector(*v, inline_mode);
-            return;
+            print(*v, inline_mode);
         }
-        if (const auto v = item.if_list())
+        else if (const auto v = item.if_list())
         {
-            print_list(*v, inline_mode);
-            return;
+            print(*v, inline_mode);
         }
-        if (const auto v = item.if_set())
+        else if (const auto v = item.if_set())
         {
-            print_set(*v, inline_mode);
-            return;
+            print(*v, inline_mode);
         }
-        if (const auto v = item.if_map())
+        else if (const auto v = item.if_map())
         {
-            print_map(*v, inline_mode);
-            return;
+            print(*v, inline_mode);
         }
-        if (const auto v = item.if_tagged_element())
+        else if (const auto v = item.if_tagged_element())
         {
             os << write_ansi(&color_scheme::tag) << "#" << write_ansi(&color_scheme::reset);
             os << write_ansi(&color_scheme::tag) << v->tag() << write_ansi(&color_scheme::reset) << " ";
             print_value(v->element(), inline_mode);
-            return;
         }
-        if (const auto v = item.if_quoted_element())
+        else if (const auto v = item.if_quoted_element())
         {
             os << write_ansi(&color_scheme::tag) << "'" << write_ansi(&color_scheme::reset);
             print_value(v->element(), inline_mode);
-            return;
         }
-        print_value_inline(item);
+        else
+        {
+            print_value_inline(item);
+        }
     }
 
 public:
