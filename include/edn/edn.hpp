@@ -270,6 +270,7 @@ struct value_t
     value_t(boolean_t v) : m_data(std::move(v)) { }
     value_t(character_t v) : m_data(std::move(v)) { }
     value_t(string_t v) : m_data(std::move(v)) { }
+    value_t(const char* v) : m_data(std::string(v)) { }
     value_t(symbol_t v) : m_data(std::move(v)) { }
     value_t(keyword_t v) : m_data(std::move(v)) { }
     value_t(vector_t v) : m_data(std::move(v)) { }

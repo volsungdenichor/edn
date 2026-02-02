@@ -2,8 +2,7 @@
 
 #include <edn/edn.hpp>
 
-template <class Matcher>
-constexpr auto SerializedIs(Matcher&& matcher)
+constexpr auto SerializedIs = [](auto&& matcher)
 {
     return testing::ResultOf(
         "serialized",
@@ -13,8 +12,11 @@ constexpr auto SerializedIs(Matcher&& matcher)
             os << value;
             return os.str();
         },
-        std::forward<Matcher>(matcher));
-}
+        std::forward<decltype(matcher)>(matcher));
+};
+
+constexpr auto OfType = [](auto&& matcher)
+{ return testing::Property("type", &edn::value_t::type, std::forward<decltype(matcher)>(matcher)); };
 
 TEST(edn, default_construced_value_is_nil)
 {
@@ -22,7 +24,17 @@ TEST(edn, default_construced_value_is_nil)
         edn::value_t{},
         testing::AllOf(
             testing::Property("is_nil", &edn::value_t::is_nil, true),
-            testing::Property("type", &edn::value_t::type, edn::value_type_t::nil),
+            OfType(edn::value_type_t::nil),
+            SerializedIs(testing::StrEq("nil"))));
+}
+
+TEST(edn, nil)
+{
+    EXPECT_THAT(
+        edn::value_t{ edn::nil },
+        testing::AllOf(
+            testing::Property("is_nil", &edn::value_t::is_nil, true),
+            OfType(edn::value_type_t::nil),
             SerializedIs(testing::StrEq("nil"))));
 }
 
@@ -32,7 +44,7 @@ TEST(edn, integer)
         edn::value_t{ 42 },
         testing::AllOf(
             testing::Property("if_integer", &edn::value_t::if_integer, testing::Pointee(42)),
-            testing::Property("type", &edn::value_t::type, edn::value_type_t::integer),
+            OfType(edn::value_type_t::integer),
             SerializedIs(testing::StrEq("42"))));
 }
 
@@ -42,7 +54,7 @@ TEST(edn, floating_point)
         edn::value_t{ 2.71828 },
         testing::AllOf(
             testing::Property("if_floating_point", &edn::value_t::if_floating_point, testing::Pointee(2.71828)),
-            testing::Property("type", &edn::value_t::type, edn::value_type_t::floating_point),
+            OfType(edn::value_type_t::floating_point),
             SerializedIs(testing::StrEq("2.71828"))));
 }
 
@@ -52,7 +64,7 @@ TEST(edn, boolean)
         edn::value_t{ true },
         testing::AllOf(
             testing::Property("if_boolean", &edn::value_t::if_boolean, testing::Pointee(true)),
-            testing::Property("type", &edn::value_t::type, edn::value_type_t::boolean),
+            OfType(edn::value_type_t::boolean),
             SerializedIs(testing::StrEq("true"))));
 }
 
@@ -62,7 +74,7 @@ TEST(edn, character)
         edn::value_t{ ' ' },
         testing::AllOf(
             testing::Property("if_character", &edn::value_t::if_character, testing::Pointee(' ')),
-            testing::Property("type", &edn::value_t::type, edn::value_type_t::character),
+            OfType(edn::value_type_t::character),
             SerializedIs(testing::StrEq("\\space"))));
 }
 
@@ -72,7 +84,7 @@ TEST(edn, string)
         edn::value_t{ std::string{ "Benvenuto" } },
         testing::AllOf(
             testing::Property("if_string", &edn::value_t::if_string, testing::Pointee(testing::StrEq("Benvenuto"))),
-            testing::Property("type", &edn::value_t::type, edn::value_type_t::string),
+            OfType(edn::value_type_t::string),
             SerializedIs(testing::StrEq(R"("Benvenuto")"))));
 }
 
@@ -82,7 +94,7 @@ TEST(edn, symbol)
         edn::value_t{ edn::symbol_t{ "my-symbol" } },
         testing::AllOf(
             testing::Property("if_symbol", &edn::value_t::if_symbol, testing::Pointee(testing::StrEq("my-symbol"))),
-            testing::Property("type", &edn::value_t::type, edn::value_type_t::symbol),
+            OfType(edn::value_type_t::symbol),
             SerializedIs(testing::StrEq("my-symbol"))));
 }
 
@@ -92,7 +104,7 @@ TEST(edn, keyword)
         edn::value_t{ edn::keyword_t{ "my-keyword" } },
         testing::AllOf(
             testing::Property("if_keyword", &edn::value_t::if_keyword, testing::Pointee(testing::StrEq("my-keyword"))),
-            testing::Property("type", &edn::value_t::type, edn::value_type_t::keyword),
+            OfType(edn::value_type_t::keyword),
             SerializedIs(testing::StrEq(":my-keyword"))));
 }
 
@@ -112,8 +124,117 @@ TEST(edn, tagged_element)
                         testing::AllOf(
                             testing::Property(
                                 "if_string", &edn::value_t::if_string, testing::Pointee(testing::StrEq("2024-01-01"))),
-                            testing::Property("type", &edn::value_t::type, edn::value_type_t::string),
+                            OfType(edn::value_type_t::string),
                             SerializedIs(testing::StrEq(R"("2024-01-01")"))))))),
-            testing::Property("type", &edn::value_t::type, edn::value_type_t::tagged_element),
+            OfType(edn::value_type_t::tagged_element),
             SerializedIs(testing::StrEq(R"(#inst "2024-01-01")"))));
+}
+
+TEST(edn, quoted_element)
+{
+    EXPECT_THAT(
+        (edn::value_t{ edn::quoted_element_t{ edn::vector_t{ 1, 2, 3 } } }),
+        testing::AllOf(
+            testing::Property(
+                "if_quoted_element",
+                &edn::value_t::if_quoted_element,
+                testing::Pointee(testing::AllOf(testing::Property(
+                    "element",
+                    &edn::quoted_element_t::element,
+                    testing::AllOf(
+                        testing::Property(
+                            "if_vector",
+                            &edn::value_t::if_vector,
+                            testing::Pointee(testing::ElementsAre(
+                                testing::AllOf(
+                                    testing::Property("if_integer", &edn::value_t::if_integer, testing::Pointee(1)),
+                                    OfType(edn::value_type_t::integer),
+                                    SerializedIs(testing::StrEq("1"))),
+                                testing::AllOf(
+                                    testing::Property("if_integer", &edn::value_t::if_integer, testing::Pointee(2)),
+                                    OfType(edn::value_type_t::integer),
+                                    SerializedIs(testing::StrEq("2"))),
+                                testing::AllOf(
+                                    testing::Property("if_integer", &edn::value_t::if_integer, testing::Pointee(3)),
+                                    OfType(edn::value_type_t::integer),
+                                    SerializedIs(testing::StrEq("3")))))),
+                        OfType(edn::value_type_t::vector),
+                        SerializedIs(testing::StrEq("[1 2 3]"))))))),
+            OfType(edn::value_type_t::quoted_element),
+            SerializedIs(testing::StrEq("'[1 2 3]"))));
+}
+
+TEST(edn, vector)
+{
+    EXPECT_THAT(
+        (edn::value_t{ edn::vector_t{ 1, "A", 'a' } }),
+        testing::AllOf(
+            testing::Property(
+                "if_vector",
+                &edn::value_t::if_vector,
+                testing::Pointee(testing::ElementsAre(
+                    testing::AllOf(
+                        testing::Property("if_integer", &edn::value_t::if_integer, testing::Pointee(1)),
+                        OfType(edn::value_type_t::integer),
+                        SerializedIs(testing::StrEq("1"))),
+                    testing::AllOf(
+                        testing::Property("if_string", &edn::value_t::if_string, testing::Pointee(testing::StrEq("A"))),
+                        OfType(edn::value_type_t::string),
+                        SerializedIs(testing::StrEq(R"("A")"))),
+                    testing::AllOf(
+                        testing::Property("if_character", &edn::value_t::if_character, testing::Pointee('a')),
+                        OfType(edn::value_type_t::character),
+                        SerializedIs(testing::StrEq(R"(\a)")))))),
+            OfType(edn::value_type_t::vector),
+            SerializedIs(testing::StrEq(R"([1 "A" \a])"))));
+}
+
+TEST(edn, list)
+{
+    EXPECT_THAT(
+        (edn::value_t{ edn::list_t{ edn::symbol_t{ "+" }, 1, 2 } }),
+        testing::AllOf(
+            testing::Property(
+                "if_list",
+                &edn::value_t::if_list,
+                testing::Pointee(testing::ElementsAre(
+                    testing::AllOf(
+                        testing::Property("if_symbol", &edn::value_t::if_symbol, testing::Pointee(edn::symbol_t{ "+" })),
+                        OfType(edn::value_type_t::symbol),
+                        SerializedIs(testing::StrEq("+"))),
+                    testing::AllOf(
+                        testing::Property("if_integer", &edn::value_t::if_integer, testing::Pointee(1)),
+                        OfType(edn::value_type_t::integer),
+                        SerializedIs(testing::StrEq("1"))),
+                    testing::AllOf(
+                        testing::Property("if_integer", &edn::value_t::if_integer, testing::Pointee(2)),
+                        OfType(edn::value_type_t::integer),
+                        SerializedIs(testing::StrEq("2")))))),
+            OfType(edn::value_type_t::list),
+            SerializedIs(testing::StrEq(R"((+ 1 2))"))));
+}
+
+TEST(edn, set)
+{
+    EXPECT_THAT(
+        (edn::value_t{ edn::set_t{ 1, 2, 3 } }),
+        testing::AllOf(
+            testing::Property(
+                "if_set",
+                &edn::value_t::if_set,
+                testing::Pointee(testing::UnorderedElementsAre(
+                    testing::AllOf(
+                        testing::Property("if_integer", &edn::value_t::if_integer, testing::Pointee(1)),
+                        OfType(edn::value_type_t::integer),
+                        SerializedIs(testing::StrEq("1"))),
+                    testing::AllOf(
+                        testing::Property("if_integer", &edn::value_t::if_integer, testing::Pointee(2)),
+                        OfType(edn::value_type_t::integer),
+                        SerializedIs(testing::StrEq("2"))),
+                    testing::AllOf(
+                        testing::Property("if_integer", &edn::value_t::if_integer, testing::Pointee(3)),
+                        OfType(edn::value_type_t::integer),
+                        SerializedIs(testing::StrEq("3")))))),
+            OfType(edn::value_type_t::set),
+            SerializedIs(testing::StrEq("#{1 2 3}"))));
 }
