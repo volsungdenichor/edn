@@ -75,7 +75,7 @@ TEST(edn, character)
         testing::AllOf(
             testing::Property("if_character", &edn::value_t::if_character, testing::Pointee(' ')),
             OfType(edn::value_type_t::character),
-            WhenSerialized(testing::StrEq("\\space"))));
+            WhenSerialized(testing::StrEq(R"(\space)"))));
 }
 
 TEST(edn, string)
@@ -237,4 +237,37 @@ TEST(edn, set)
                         WhenSerialized(testing::StrEq("3")))))),
             OfType(edn::value_type_t::set),
             WhenSerialized(testing::StrEq("#{1 2 3}"))));
+}
+
+TEST(edn, map)
+{
+    EXPECT_THAT(
+        (edn::value_t{
+            edn::map_t{ { edn::keyword_t{ "name" }, edn::string_t{ "John" } }, { edn::keyword_t{ "age" }, 30 } } }),
+        testing::AllOf(
+            testing::Property(
+                "if_map",
+                &edn::value_t::if_map,
+                testing::Pointee(testing::UnorderedElementsAre(
+                    testing::Pair(
+                        testing::AllOf(
+                            testing::Property(
+                                "if_keyword", &edn::value_t::if_keyword, testing::Pointee(testing::StrEq("name"))),
+                            OfType(edn::value_type_t::keyword)),
+                        testing::AllOf(
+                            testing::Property(
+                                "if_string", &edn::value_t::if_string, testing::Pointee(testing::StrEq("John"))),
+                            OfType(edn::value_type_t::string),
+                            WhenSerialized(testing::StrEq(R"("John")")))),
+                    testing::Pair(
+                        testing::AllOf(
+                            testing::Property(
+                                "if_keyword", &edn::value_t::if_keyword, testing::Pointee(testing::StrEq("age"))),
+                            OfType(edn::value_type_t::keyword)),
+                        testing::AllOf(
+                            testing::Property("if_integer", &edn::value_t::if_integer, testing::Pointee(30)),
+                            OfType(edn::value_type_t::integer),
+                            WhenSerialized(testing::StrEq("30"))))))),
+            OfType(edn::value_type_t::map),
+            WhenSerialized(testing::StrEq(R"({:age 30 :name "John"})"))));
 }
