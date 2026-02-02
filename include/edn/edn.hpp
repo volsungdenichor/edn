@@ -38,20 +38,11 @@ struct box_t
         return *this;
     }
 
-    constexpr const value_type& get() const& noexcept
-    {
-        return *m_ptr;
-    }
+    constexpr const value_type& get() const& noexcept { return *m_ptr; }
 
-    constexpr operator const value_type&() const noexcept
-    {
-        return get();
-    }
+    constexpr operator const value_type&() const noexcept { return get(); }
 
-    friend std::ostream& operator<<(std::ostream& os, const box_t& item)
-    {
-        return os << item.get();
-    }
+    friend std::ostream& operator<<(std::ostream& os, const box_t& item) { return os << item.get(); }
 };
 
 struct unbox_fn
@@ -219,38 +210,14 @@ struct map_t
 
     map_t(std::initializer_list<std::pair<value_t, value_t>> items);
 
-    constexpr auto begin() -> iterator
-    {
-        return m_items.begin();
-    }
-    constexpr auto end() -> iterator
-    {
-        return m_items.end();
-    }
-    constexpr auto begin() const -> const_iterator
-    {
-        return m_items.begin();
-    }
-    constexpr auto end() const -> const_iterator
-    {
-        return m_items.end();
-    }
-    constexpr auto cbegin() const -> const_iterator
-    {
-        return begin();
-    }
-    constexpr auto cend() const -> const_iterator
-    {
-        return end();
-    }
-    constexpr auto empty() const -> bool
-    {
-        return m_items.empty();
-    }
-    constexpr auto size() const -> std::size_t
-    {
-        return m_items.size();
-    }
+    constexpr auto begin() -> iterator { return m_items.begin(); }
+    constexpr auto end() -> iterator { return m_items.end(); }
+    constexpr auto begin() const -> const_iterator { return m_items.begin(); }
+    constexpr auto end() const -> const_iterator { return m_items.end(); }
+    constexpr auto cbegin() const -> const_iterator { return begin(); }
+    constexpr auto cend() const -> const_iterator { return end(); }
+    constexpr auto empty() const -> bool { return m_items.empty(); }
+    constexpr auto size() const -> std::size_t { return m_items.size(); }
     auto find(const value_t& key) const -> const_iterator;
     auto find(const value_t& key) -> iterator;
     auto operator[](const value_t& key) -> value_t&;
@@ -275,15 +242,9 @@ struct tagged_element_t
 
     tagged_element_t(symbol_t tag, const value_t& element) : m_tag(std::move(tag)), m_element(element) { }
 
-    const symbol_t& tag() const
-    {
-        return m_tag;
-    }
+    const symbol_t& tag() const { return m_tag; }
 
-    const value_t& element() const
-    {
-        return m_element.get();
-    }
+    const value_t& element() const { return m_element.get(); }
 
     friend std::ostream& operator<<(std::ostream& os, const tagged_element_t& item);
 };
@@ -294,10 +255,7 @@ struct quoted_element_t
 
     explicit quoted_element_t(const value_t& element) : m_element(element) { }
 
-    const value_t& element() const
-    {
-        return m_element.get();
-    }
+    const value_t& element() const { return m_element.get(); }
 
     friend std::ostream& operator<<(std::ostream& os, const quoted_element_t& item);
 };
@@ -361,62 +319,20 @@ struct value_t
     {
         struct visitor
         {
-            constexpr auto operator()(nil_t) const -> value_type_t
-            {
-                return value_type_t::nil;
-            }
-            constexpr auto operator()(boolean_t) const -> value_type_t
-            {
-                return value_type_t::boolean;
-            }
-            constexpr auto operator()(character_t) const -> value_type_t
-            {
-                return value_type_t::character;
-            }
-            constexpr auto operator()(integer_t) const -> value_type_t
-            {
-                return value_type_t::integer;
-            }
-            constexpr auto operator()(floating_point_t) const -> value_type_t
-            {
-                return value_type_t::floating_point;
-            }
-            constexpr auto operator()(const string_t&) const -> value_type_t
-            {
-                return value_type_t::string;
-            }
-            constexpr auto operator()(const symbol_t&) const -> value_type_t
-            {
-                return value_type_t::symbol;
-            }
-            constexpr auto operator()(const keyword_t&) const -> value_type_t
-            {
-                return value_type_t::keyword;
-            }
-            constexpr auto operator()(const list_t&) const -> value_type_t
-            {
-                return value_type_t::list;
-            }
-            constexpr auto operator()(const vector_t&) const -> value_type_t
-            {
-                return value_type_t::vector;
-            }
-            constexpr auto operator()(const set_t&) const -> value_type_t
-            {
-                return value_type_t::set;
-            }
-            constexpr auto operator()(const map_t&) const -> value_type_t
-            {
-                return value_type_t::map;
-            }
-            constexpr auto operator()(const tagged_element_t&) const -> value_type_t
-            {
-                return value_type_t::tagged_element;
-            }
-            constexpr auto operator()(const quoted_element_t&) const -> value_type_t
-            {
-                return value_type_t::quoted_element;
-            }
+            constexpr auto operator()(nil_t) const -> value_type_t { return value_type_t::nil; }
+            constexpr auto operator()(boolean_t) const -> value_type_t { return value_type_t::boolean; }
+            constexpr auto operator()(character_t) const -> value_type_t { return value_type_t::character; }
+            constexpr auto operator()(integer_t) const -> value_type_t { return value_type_t::integer; }
+            constexpr auto operator()(floating_point_t) const -> value_type_t { return value_type_t::floating_point; }
+            constexpr auto operator()(const string_t&) const -> value_type_t { return value_type_t::string; }
+            constexpr auto operator()(const symbol_t&) const -> value_type_t { return value_type_t::symbol; }
+            constexpr auto operator()(const keyword_t&) const -> value_type_t { return value_type_t::keyword; }
+            constexpr auto operator()(const list_t&) const -> value_type_t { return value_type_t::list; }
+            constexpr auto operator()(const vector_t&) const -> value_type_t { return value_type_t::vector; }
+            constexpr auto operator()(const set_t&) const -> value_type_t { return value_type_t::set; }
+            constexpr auto operator()(const map_t&) const -> value_type_t { return value_type_t::map; }
+            constexpr auto operator()(const tagged_element_t&) const -> value_type_t { return value_type_t::tagged_element; }
+            constexpr auto operator()(const quoted_element_t&) const -> value_type_t { return value_type_t::quoted_element; }
             // constexpr auto operator()(const callable_t&) const -> value_type_t
             // {
             //     return value_type_t::callable;
@@ -425,39 +341,15 @@ struct value_t
         return std::visit(unboxing_visitor{ visitor{} }, m_data);
     }
 
-    constexpr bool is_nil() const
-    {
-        return std::holds_alternative<nil_t>(m_data);
-    }
+    constexpr bool is_nil() const { return std::holds_alternative<nil_t>(m_data); }
 
-    constexpr const integer_t* if_integer() const
-    {
-        return std::get_if<integer_t>(&m_data);
-    }
-    constexpr const floating_point_t* if_floating_point() const
-    {
-        return std::get_if<floating_point_t>(&m_data);
-    }
-    constexpr const boolean_t* if_boolean() const
-    {
-        return std::get_if<boolean_t>(&m_data);
-    }
-    constexpr const character_t* if_character() const
-    {
-        return std::get_if<character_t>(&m_data);
-    }
-    constexpr const string_t* if_string() const
-    {
-        return std::get_if<string_t>(&m_data);
-    }
-    constexpr const symbol_t* if_symbol() const
-    {
-        return std::get_if<symbol_t>(&m_data);
-    }
-    constexpr const keyword_t* if_keyword() const
-    {
-        return std::get_if<keyword_t>(&m_data);
-    }
+    constexpr const integer_t* if_integer() const { return std::get_if<integer_t>(&m_data); }
+    constexpr const floating_point_t* if_floating_point() const { return std::get_if<floating_point_t>(&m_data); }
+    constexpr const boolean_t* if_boolean() const { return std::get_if<boolean_t>(&m_data); }
+    constexpr const character_t* if_character() const { return std::get_if<character_t>(&m_data); }
+    constexpr const string_t* if_string() const { return std::get_if<string_t>(&m_data); }
+    constexpr const symbol_t* if_symbol() const { return std::get_if<symbol_t>(&m_data); }
+    constexpr const keyword_t* if_keyword() const { return std::get_if<keyword_t>(&m_data); }
     constexpr const vector_t* if_vector() const
     {
         if (auto ptr = std::get_if<box_t<vector_t>>(&m_data))
@@ -490,14 +382,8 @@ struct value_t
         }
         return nullptr;
     }
-    constexpr const tagged_element_t* if_tagged_element() const
-    {
-        return std::get_if<tagged_element_t>(&m_data);
-    }
-    constexpr const quoted_element_t* if_quoted_element() const
-    {
-        return std::get_if<quoted_element_t>(&m_data);
-    }
+    constexpr const tagged_element_t* if_tagged_element() const { return std::get_if<tagged_element_t>(&m_data); }
+    constexpr const quoted_element_t* if_quoted_element() const { return std::get_if<quoted_element_t>(&m_data); }
 };
 
 inline std::ostream& operator<<(std::ostream& os, const nil_t&)
@@ -686,62 +572,20 @@ struct print_visitor
 {
     std::ostream& os;
 
-    void operator()(nil_t) const
-    {
-        os << "nil";
-    }
-    void operator()(integer_t v) const
-    {
-        os << v;
-    }
-    void operator()(floating_point_t v) const
-    {
-        os << v;
-    }
-    void operator()(boolean_t v) const
-    {
-        os << (v ? "true" : "false");
-    }
-    void operator()(character_t v) const
-    {
-        format_character(os, v);
-    }
-    void operator()(const string_t& v) const
-    {
-        os << std::quoted(v);
-    }
-    void operator()(const symbol_t& v) const
-    {
-        os << v;
-    }
-    void operator()(const keyword_t& v) const
-    {
-        os << v;
-    }
-    void operator()(const vector_t& v) const
-    {
-        os << v;
-    }
-    void operator()(const list_t& v) const
-    {
-        os << v;
-    }
-    void operator()(const set_t& v) const
-    {
-        os << v;
-    }
-    void operator()(const map_t& v) const
-    {
-        os << v;
-    }
-    void operator()(const tagged_element_t& v) const
-    {
-        os << v;
-    }
-    void operator()(const quoted_element_t& v) const
-    {
-        os << v;
-    }
+    void operator()(nil_t) const { os << "nil"; }
+    void operator()(integer_t v) const { os << v; }
+    void operator()(floating_point_t v) const { os << v; }
+    void operator()(boolean_t v) const { os << (v ? "true" : "false"); }
+    void operator()(character_t v) const { format_character(os, v); }
+    void operator()(const string_t& v) const { os << std::quoted(v); }
+    void operator()(const symbol_t& v) const { os << v; }
+    void operator()(const keyword_t& v) const { os << v; }
+    void operator()(const vector_t& v) const { os << v; }
+    void operator()(const list_t& v) const { os << v; }
+    void operator()(const set_t& v) const { os << v; }
+    void operator()(const map_t& v) const { os << v; }
+    void operator()(const tagged_element_t& v) const { os << v; }
+    void operator()(const quoted_element_t& v) const { os << v; }
     // void operator()(const callable_t& v) const
     // {
     //     os << "<< callable >>";
@@ -750,62 +594,26 @@ struct print_visitor
 
 struct eq_visitor
 {
-    bool operator()(nil_t, nil_t) const
-    {
-        return true;
-    }
-    bool operator()(boolean_t lt, boolean_t rt) const
-    {
-        return lt == rt;
-    }
-    bool operator()(character_t lt, character_t rt) const
-    {
-        return lt == rt;
-    }
-    bool operator()(integer_t lt, integer_t rt) const
-    {
-        return lt == rt;
-    }
+    bool operator()(nil_t, nil_t) const { return true; }
+    bool operator()(boolean_t lt, boolean_t rt) const { return lt == rt; }
+    bool operator()(character_t lt, character_t rt) const { return lt == rt; }
+    bool operator()(integer_t lt, integer_t rt) const { return lt == rt; }
     bool operator()(floating_point_t lt, floating_point_t rt) const
     {
         return std::abs(lt - rt) < std::numeric_limits<floating_point_t>::epsilon();
     }
-    bool operator()(const string_t& lt, const string_t& rt) const
-    {
-        return lt == rt;
-    }
-    bool operator()(const symbol_t& lt, const symbol_t& rt) const
-    {
-        return lt == rt;
-    }
-    bool operator()(const keyword_t& lt, const keyword_t& rt) const
-    {
-        return lt == rt;
-    }
-    bool operator()(const list_t& lt, const list_t& rt) const
-    {
-        return lt == rt;
-    }
-    bool operator()(const vector_t& lt, const vector_t& rt) const
-    {
-        return lt == rt;
-    }
-    bool operator()(const set_t& lt, const set_t& rt) const
-    {
-        return lt == rt;
-    }
-    bool operator()(const map_t& lt, const map_t& rt) const
-    {
-        return lt == rt;
-    }
+    bool operator()(const string_t& lt, const string_t& rt) const { return lt == rt; }
+    bool operator()(const symbol_t& lt, const symbol_t& rt) const { return lt == rt; }
+    bool operator()(const keyword_t& lt, const keyword_t& rt) const { return lt == rt; }
+    bool operator()(const list_t& lt, const list_t& rt) const { return lt == rt; }
+    bool operator()(const vector_t& lt, const vector_t& rt) const { return lt == rt; }
+    bool operator()(const set_t& lt, const set_t& rt) const { return lt == rt; }
+    bool operator()(const map_t& lt, const map_t& rt) const { return lt == rt; }
     bool operator()(const tagged_element_t& lt, const tagged_element_t& rt) const
     {
         return std::tie(lt.tag(), lt.element()) == std::tie(rt.tag(), rt.element());
     }
-    bool operator()(const quoted_element_t& lt, const quoted_element_t& rt) const
-    {
-        return lt.element() == rt.element();
-    }
+    bool operator()(const quoted_element_t& lt, const quoted_element_t& rt) const { return lt.element() == rt.element(); }
 
     template <class L, class R>
     bool operator()(const L&, const R&) const
@@ -816,62 +624,23 @@ struct eq_visitor
 
 struct lt_visitor
 {
-    bool operator()(nil_t, nil_t) const
-    {
-        return false;
-    }
-    bool operator()(boolean_t lt, boolean_t rt) const
-    {
-        return lt < rt;
-    }
-    bool operator()(character_t lt, character_t rt) const
-    {
-        return lt < rt;
-    }
-    bool operator()(integer_t lt, integer_t rt) const
-    {
-        return lt < rt;
-    }
-    bool operator()(floating_point_t lt, floating_point_t rt) const
-    {
-        return lt < rt;
-    }
-    bool operator()(const string_t& lt, const string_t& rt) const
-    {
-        return lt < rt;
-    }
-    bool operator()(const symbol_t& lt, const symbol_t& rt) const
-    {
-        return lt < rt;
-    }
-    bool operator()(const keyword_t& lt, const keyword_t& rt) const
-    {
-        return lt < rt;
-    }
-    bool operator()(const list_t& lt, const list_t& rt) const
-    {
-        return lt < rt;
-    }
-    bool operator()(const vector_t& lt, const vector_t& rt) const
-    {
-        return lt < rt;
-    }
-    bool operator()(const set_t& lt, const set_t& rt) const
-    {
-        return lt < rt;
-    }
-    bool operator()(const map_t& lt, const map_t& rt) const
-    {
-        return lt < rt;
-    }
+    bool operator()(nil_t, nil_t) const { return false; }
+    bool operator()(boolean_t lt, boolean_t rt) const { return lt < rt; }
+    bool operator()(character_t lt, character_t rt) const { return lt < rt; }
+    bool operator()(integer_t lt, integer_t rt) const { return lt < rt; }
+    bool operator()(floating_point_t lt, floating_point_t rt) const { return lt < rt; }
+    bool operator()(const string_t& lt, const string_t& rt) const { return lt < rt; }
+    bool operator()(const symbol_t& lt, const symbol_t& rt) const { return lt < rt; }
+    bool operator()(const keyword_t& lt, const keyword_t& rt) const { return lt < rt; }
+    bool operator()(const list_t& lt, const list_t& rt) const { return lt < rt; }
+    bool operator()(const vector_t& lt, const vector_t& rt) const { return lt < rt; }
+    bool operator()(const set_t& lt, const set_t& rt) const { return lt < rt; }
+    bool operator()(const map_t& lt, const map_t& rt) const { return lt < rt; }
     bool operator()(const tagged_element_t& lt, const tagged_element_t& rt) const
     {
         return std::tie(lt.tag(), lt.element()) < std::tie(rt.tag(), rt.element());
     }
-    bool operator()(const quoted_element_t& lt, const quoted_element_t& rt) const
-    {
-        return lt.element() < rt.element();
-    }
+    bool operator()(const quoted_element_t& lt, const quoted_element_t& rt) const { return lt.element() < rt.element(); }
 
     template <class L, class R>
     bool operator()(const L&, const R&) const
@@ -1310,10 +1079,7 @@ class stream_t
 public:
     stream_t(std::string_view content) : m_content(content) { }
 
-    bool eof() const
-    {
-        return m_pos >= m_content.size();
-    }
+    bool eof() const { return m_pos >= m_content.size(); }
 
     char_t peek() const
     {
@@ -1342,10 +1108,7 @@ public:
         return result;
     }
 
-    location_t location() const
-    {
-        return m_location;
-    }
+    location_t location() const { return m_location; }
 
     void skip_whitespace_and_comments()
     {
@@ -1572,15 +1335,9 @@ class parser_t
         }
     }
 
-    value_t parse_list()
-    {
-        return parse_collection<list_t>('(', ')', "Unterminated list").first;
-    }
+    value_t parse_list() { return parse_collection<list_t>('(', ')', "Unterminated list").first; }
 
-    value_t parse_vector()
-    {
-        return parse_collection<vector_t>('[', ']', "Unterminated vector").first;
-    }
+    value_t parse_vector() { return parse_collection<vector_t>('[', ']', "Unterminated vector").first; }
 
     value_t parse_set()
     {
