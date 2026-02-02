@@ -214,6 +214,8 @@ struct tagged_element_t
     symbol_t m_tag;
     box_t<value_t> m_element;
 
+    tagged_element_t(symbol_t tag, const value_t& element) : m_tag(std::move(tag)), m_element(element) { }
+
     const symbol_t& tag() const
     {
         return m_tag;
@@ -230,6 +232,8 @@ struct tagged_element_t
 struct quoted_element_t
 {
     box_t<value_t> m_element;
+
+    explicit quoted_element_t(const value_t& element) : m_element(element) { }
 
     const value_t& element() const
     {
@@ -605,7 +609,7 @@ struct print_visitor
 
 struct eq_visitor
 {
-    bool operator()(nil_t lt, nil_t rt) const
+    bool operator()(nil_t, nil_t) const
     {
         return true;
     }
@@ -663,7 +667,7 @@ struct eq_visitor
     }
 
     template <class L, class R>
-    bool operator()(const L& lt, const R& rt) const
+    bool operator()(const L&, const R&) const
     {
         return false;
     }
@@ -671,7 +675,7 @@ struct eq_visitor
 
 struct lt_visitor
 {
-    bool operator()(nil_t lt, nil_t rt) const
+    bool operator()(nil_t, nil_t) const
     {
         return false;
     }
@@ -729,7 +733,7 @@ struct lt_visitor
     }
 
     template <class L, class R>
-    bool operator()(const L& lt, const R& rt) const
+    bool operator()(const L&, const R&) const
     {
         return false;
     }
@@ -803,7 +807,7 @@ struct pretty_print_options
 {
     int indent_size = 2;
     std::optional<color_scheme> colors = color_scheme{};
-    int max_inline_length = 60;
+    std::size_t max_inline_length = 60;
     bool compact_maps = true;
 };
 
@@ -818,7 +822,7 @@ class pretty_printer
 
     pretty_printer& write_indent()
     {
-        os << std::string(current_indent, ' ');
+        os << std::string(static_cast<std::size_t>(current_indent), ' ');
         return *this;
     }
 
@@ -1021,12 +1025,11 @@ class pretty_printer
             return;
         }
 
-        const bool should_inline
-            = m_options.compact_maps && inline_mode && item.size() <= 2
-              && std::all_of(
-                  item.begin(),
-                  item.end(),
-                  [this](const auto& p) { return is_simple_value(p.first) && is_simple_value(p.second); });
+        const bool should_inline = m_options.compact_maps && inline_mode && item.size() <= 2
+                                   && std::all_of(
+                                       item.begin(),
+                                       item.end(),
+                                       [](const auto& p) { return is_simple_value(p.first) && is_simple_value(p.second); });
 
         if (should_inline)
         {
@@ -1061,32 +1064,32 @@ class pretty_printer
 
     void print_value(const value_t& item, bool inline_mode)
     {
-        if (const auto v = item.if_vector())
+        if (const auto maybe_vector = item.if_vector())
         {
-            print(*v, inline_mode);
+            print(*maybe_vector, inline_mode);
         }
-        else if (const auto v = item.if_list())
+        else if (const auto maybe_list = item.if_list())
         {
-            print(*v, inline_mode);
+            print(*maybe_list, inline_mode);
         }
-        else if (const auto v = item.if_set())
+        else if (const auto maybe_set = item.if_set())
         {
-            print(*v, inline_mode);
+            print(*maybe_set, inline_mode);
         }
-        else if (const auto v = item.if_map())
+        else if (const auto maybe_map = item.if_map())
         {
-            print(*v, inline_mode);
+            print(*maybe_map, inline_mode);
         }
-        else if (const auto v = item.if_tagged_element())
+        else if (const auto maybe_tagged_element = item.if_tagged_element())
         {
             os << write_ansi(&color_scheme::tag) << "#" << write_ansi(&color_scheme::reset);
-            os << write_ansi(&color_scheme::tag) << v->tag() << write_ansi(&color_scheme::reset) << " ";
-            print_value(v->element(), inline_mode);
+            os << write_ansi(&color_scheme::tag) << maybe_tagged_element->tag() << write_ansi(&color_scheme::reset) << " ";
+            print_value(maybe_tagged_element->element(), inline_mode);
         }
-        else if (const auto v = item.if_quoted_element())
+        else if (const auto maybe_quoted_element = item.if_quoted_element())
         {
             os << write_ansi(&color_scheme::tag) << "'" << write_ansi(&color_scheme::reset);
-            print_value(v->element(), inline_mode);
+            print_value(maybe_quoted_element->element(), inline_mode);
         }
         else
         {

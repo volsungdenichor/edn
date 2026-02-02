@@ -1,4 +1,4 @@
-#include <edn.hpp>
+#include <edn/edn.hpp>
 #include <fstream>
 #include <iostream>
 #include <memory>
@@ -9,9 +9,7 @@ struct path_t : public std::string
 {
     using base_t = std::string;
 
-    explicit path_t(std::string_view path) : base_t(path)
-    {
-    }
+    explicit path_t(std::string_view path) : base_t(path) { }
 };
 
 inline auto load_file(std::istream& is) -> std::string
@@ -105,34 +103,22 @@ void demo_parser()
     )");  // Odd number of elements - error on closing brace
 }
 
-void run(const std::vector<std::string>& args)
+void run(const std::vector<std::string>&)
 {
-    // edn2::value_t data
-    //     = edn2::vector_t{ edn2::map_t{ { edn2::keyword_t{ "name" }, edn2::string_t{ "John" } },
-    //                                    { edn2::keyword_t{ "age" }, 30 },
-    //                                    { edn2::keyword_t{ "alive" }, true },
-    //                                    { edn2::keyword_t{ "x" }, edn2::vector_t(5, 4) },
-    //                                    { edn2::keyword_t{ "items" },
-    //                                      edn2::vector_t{ edn2::string_t{ "apple" }, edn2::string_t{ "banana" } } } },
-    //                       edn2::map_t{ { edn2::keyword_t{ "name" }, edn2::string_t{ "William" } },
-    //                                    { edn2::keyword_t{ "age" }, 42 },
-    //                                    { edn2::keyword_t{ "children" }, edn2::nil },
-    //                                    { edn2::keyword_t{ "x" }, edn2::vector_t(5, 3) },
-    //                                    { edn2::keyword_t{ "items" },
-    //                                      edn2::vector_t{ edn2::string_t{ "watermelon" }, edn2::string_t{ "grape" } } } }
-    //                                      };
+    edn::value_t data = edn::vector_t{ edn::keyword_t{ "all" },
+                                       edn::vector_t{ edn::vector_t{ edn::keyword_t{ "ge" }, 5 } },
+                                       edn::vector_t{ edn::keyword_t{ "lt" }, 10 },
+                                       edn::vector_t{ edn::keyword_t{ "odd?" } } };
+    std::cout << data.type() << "\n";
+    std::cout << data << "\n";
 
-    // std::cout << data.type() << "\n";
-    // std::cout << data << "\n";
-
-    // edn2::pretty_print_options opts;
-    // opts.colors = edn2::color_scheme{};
+    // edn::pretty_print_options opts;
+    // opts.colors = edn::color_scheme{};
     // opts.indent_size = 2;
-    // opts.max_inline_length = 70;
-    // opts.compact_maps = false;
-    // edn2::pretty_print(std::cout, data, opts);
-    // edn2::pretty_print(std::cout, data.if_vector()->at(0).if_map()->at(edn2::keyword_t{ "x" }), opts);
-    demo_parser();
+    // opts.max_inline_length = 120;
+    // opts.compact_maps = true;
+    edn::pretty_print(std::cout, data);
+    // demo_parser();
 }
 
 int main(int argc, char** argv)
