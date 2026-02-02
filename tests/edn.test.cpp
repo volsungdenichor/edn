@@ -248,7 +248,7 @@ TEST(edn, map)
             testing::Property(
                 "if_map",
                 &edn::value_t::if_map,
-                testing::Pointee(testing::UnorderedElementsAre(
+                testing::Pointee(testing::ElementsAre(
                     testing::Pair(
                         testing::AllOf(
                             testing::Property(
@@ -269,5 +269,5 @@ TEST(edn, map)
                             OfType(edn::value_type_t::integer),
                             WhenSerialized(testing::StrEq("30"))))))),
             OfType(edn::value_type_t::map),
-            WhenSerialized(testing::StrEq(R"({:age 30 :name "John"})"))));
+            WhenSerialized(testing::StrEq(R"({:name "John" :age 30})"))));
 }
