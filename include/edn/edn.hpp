@@ -1138,7 +1138,7 @@ class parser_t
 
     bool is_delimiter(char ch) const
     {
-        static const std::string delimiters = "()[]{};,";
+        static const std::string delimiters = "()[]{};,\"\\:#'";
         return std::isspace(ch) || delimiters.find(ch) != std::string::npos;
     }
 
@@ -1386,8 +1386,6 @@ class parser_t
             {
                 throw parse_error("Expected tag name after #", start_loc);
             }
-
-            m_stream.skip_whitespace_and_comments();
 
             value_t element = parse_value();
             return tagged_element_t{ symbol_t{ tag_name.c_str() }, std::move(element) };
