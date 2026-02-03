@@ -106,20 +106,14 @@ void demo_parser()
 void run(const std::vector<std::string>&)
 {
     using namespace edn::literals;
-    const edn::value_t data = edn::list_t{ "each-item"_kw,
-                                           edn::list_t{ "and"_kw,
-                                                        edn::list_t{ edn::list_t{ edn::list_t{ "ge"_kw, 5 } },
-                                                                     edn::list_t{ "lt"_kw, 10 },
-                                                                     edn::list_t{ "odd?"_kw } } } };
-    std::cout << data.type() << "\n";
-    std::cout << data << "\n";
 
-    // edn::pretty_print_options opts;
-    // opts.colors = edn::color_scheme{};
-    // opts.indent_size = 2;
-    // opts.max_inline_length = 120;
-    // opts.compact_maps = true;
-    edn::pretty_print(std::cout, data);
+    edn::pretty_print(
+        std::cout,
+        edn::list_t{ "each-item"_kw,
+                     edn::list_t{ "and"_kw,
+                                  edn::list_t{ edn::list_t{ edn::list_t{ "ge"_kw, 5 } },
+                                               edn::list_t{ "lt"_kw, 10 },
+                                               edn::list_t{ "odd?"_kw } } } });
 
     edn::pretty_print(std::cout, edn::parse(R"(
         [{
@@ -135,7 +129,13 @@ void run(const std::vector<std::string>&)
             :hobbies ["reading" "coding" "hiking"]
         }]
         )"));
-    // demo_parser();
+    edn::pretty_print(
+        std::cout,
+        edn::map_t{ { edn::keyword_t("server"),
+                      edn::map_t{ { edn::keyword_t("host"), "localhost" },
+                                  { edn::keyword_t("port"), 8080 },
+                                  { edn::keyword_t("ssl"), true } } },
+                    { edn::keyword_t("endpoints"), edn::vector_t{ "/api/users", "/api/posts", "/api/comments" } } });
 }
 
 int main(int argc, char** argv)
