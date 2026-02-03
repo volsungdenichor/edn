@@ -2,6 +2,8 @@ set(TARGET_NAME edn-tests)
 
 set(UNIT_TEST_SOURCE_LIST
     edn.test.cpp
+    parse.test.cpp
+    evaluate.test.cpp
 )
 
 Include(FetchContent)

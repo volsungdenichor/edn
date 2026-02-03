@@ -5,7 +5,6 @@
 #include <iomanip>
 #include <iostream>
 #include <limits>
-#include <map>
 #include <memory>
 #include <optional>
 #include <set>
@@ -17,6 +16,14 @@
 
 namespace edn
 {
+
+template <class... Args>
+inline auto str(Args&&... args) -> std::string
+{
+    std::ostringstream ss;
+    (ss << ... << std::forward<Args>(args));
+    return ss.str();
+}
 
 template <class K, class V>
 struct ordered_map
@@ -90,13 +97,7 @@ struct ordered_map
         auto it = find(key);
         if (it == end())
         {
-            throw std::out_of_range{ std::invoke(
-                [&]() -> std::string
-                {
-                    std::ostringstream ss;
-                    ss << "key not found in map_t: " << key;
-                    return ss.str();
-                }) };
+            throw std::out_of_range{ str("key not found in map_t: ", key) };
         }
         return it->second;
     }
@@ -317,6 +318,17 @@ struct quoted_element_t
     friend std::ostream& operator<<(std::ostream& os, const quoted_element_t& item);
 };
 
+struct callable_t
+{
+    using function_type = std::function<value_t(const std::vector<value_t>&)>;
+    function_type m_function;
+    explicit callable_t(function_type function) : m_function(std::move(function)) { }
+
+    value_t operator()(const std::vector<value_t>& args) const;
+
+    friend std::ostream& operator<<(std::ostream& os, const callable_t&) { return os << "<< callable >>"; }
+};
+
 struct value_t
 {
     using data_type = std::variant<
@@ -333,7 +345,8 @@ struct value_t
         box_t<set_t>,
         box_t<map_t>,
         tagged_element_t,
-        quoted_element_t>;
+        quoted_element_t,
+        box_t<callable_t>>;
 
     data_type m_data;
 
@@ -353,6 +366,7 @@ struct value_t
     value_t(map_t v) : m_data(std::move(v)) { }
     value_t(tagged_element_t v) : m_data(std::move(v)) { }
     value_t(quoted_element_t v) : m_data(std::move(v)) { }
+    value_t(callable_t v) : m_data(std::move(v)) { }
 
     value_t(const value_t&) = default;
     value_t(value_t&&) noexcept = default;
@@ -390,10 +404,7 @@ struct value_t
             constexpr auto operator()(const map_t&) const -> value_type_t { return value_type_t::map; }
             constexpr auto operator()(const tagged_element_t&) const -> value_type_t { return value_type_t::tagged_element; }
             constexpr auto operator()(const quoted_element_t&) const -> value_type_t { return value_type_t::quoted_element; }
-            // constexpr auto operator()(const callable_t&) const -> value_type_t
-            // {
-            //     return value_type_t::callable;
-            // }
+            constexpr auto operator()(const callable_t&) const -> value_type_t { return value_type_t::callable; }
         };
         return std::visit(unboxing_visitor{ visitor{} }, m_data);
     }
@@ -441,6 +452,14 @@ struct value_t
     }
     constexpr const tagged_element_t* if_tagged_element() const { return std::get_if<tagged_element_t>(&m_data); }
     constexpr const quoted_element_t* if_quoted_element() const { return std::get_if<quoted_element_t>(&m_data); }
+    constexpr const callable_t* if_callable() const
+    {
+        if (auto ptr = std::get_if<box_t<callable_t>>(&m_data))
+        {
+            return &ptr->get();
+        }
+        return nullptr;
+    }
 };
 
 inline std::ostream& operator<<(std::ostream& os, const nil_t&)
@@ -518,6 +537,11 @@ inline std::ostream& operator<<(std::ostream& os, const quoted_element_t& item)
     return os << "'" << item.element();
 }
 
+inline value_t callable_t::operator()(const std::vector<value_t>& args) const
+{
+    return m_function(args);
+}
+
 namespace detail
 {
 
@@ -531,7 +555,7 @@ inline const std::vector<std::tuple<char, std::string_view>>& character_names()
     return names;
 }
 
-void format_character(std::ostream& os, character_t v)
+inline void format_character(std::ostream& os, character_t v)
 {
     for (const auto& [ch, value] : character_names())
     {
@@ -562,10 +586,7 @@ struct print_visitor
     void operator()(const map_t& v) const { os << v; }
     void operator()(const tagged_element_t& v) const { os << v; }
     void operator()(const quoted_element_t& v) const { os << v; }
-    // void operator()(const callable_t& v) const
-    // {
-    //     os << "<< callable >>";
-    // }
+    void operator()(const callable_t& v) const { os << v; }
 };
 
 struct eq_visitor
