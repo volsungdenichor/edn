@@ -13,29 +13,29 @@ namespace edn
 struct stack_t
 {
     using frame_type = std::map<symbol_t, value_t>;
-    frame_type frame;
-    stack_t* outer;
+    frame_type m_frame;
+    stack_t* m_outer;
 
-    stack_t(frame_type frame, stack_t* outer) : frame{ std::move(frame) }, outer{ outer } { }
+    stack_t(frame_type frame, stack_t* outer) : m_frame{ std::move(frame) }, m_outer{ outer } { }
 
     stack_t(stack_t* outer) : stack_t{ frame_type{}, outer } { }
 
     const value_t& insert(const symbol_t& symbol, const value_t& v)
     {
-        frame.emplace(symbol, v);
+        m_frame.emplace(symbol, v);
         return v;
     }
 
     const value_t& get(const symbol_t& symbol) const
     {
-        const auto iter = frame.find(symbol);
-        if (iter != frame.end())
+        const auto iter = m_frame.find(symbol);
+        if (iter != m_frame.end())
         {
             return iter->second;
         }
-        if (outer)
+        if (m_outer)
         {
-            return outer->get(symbol);
+            return m_outer->get(symbol);
         }
 
         throw std::runtime_error{ str("Unrecognized symbol `", symbol, "`") };

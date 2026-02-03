@@ -1488,4 +1488,19 @@ struct parse_fn
 
 constexpr inline auto parse = detail::parse_fn{};
 
+namespace literals
+{
+
+inline auto operator""_kw(const char* str, std::size_t) -> keyword_t
+{
+    return keyword_t{ str };
+}
+
+inline auto operator""_sym(const char* str, std::size_t) -> symbol_t
+{
+    return symbol_t{ str };
+}
+
+}  // namespace literals
+
 }  // namespace edn

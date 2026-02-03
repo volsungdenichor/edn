@@ -105,10 +105,12 @@ void demo_parser()
 
 void run(const std::vector<std::string>&)
 {
-    edn::value_t data = edn::vector_t{ edn::keyword_t{ "all" },
-                                       edn::vector_t{ edn::vector_t{ edn::keyword_t{ "ge" }, 5 } },
-                                       edn::vector_t{ edn::keyword_t{ "lt" }, 10 },
-                                       edn::vector_t{ edn::keyword_t{ "odd?" } } };
+    using namespace edn::literals;
+    const edn::value_t data = edn::list_t{ "each-item"_kw,
+                                           edn::list_t{ "and"_kw,
+                                                        edn::list_t{ edn::list_t{ edn::list_t{ "ge"_kw, 5 } },
+                                                                     edn::list_t{ "lt"_kw, 10 },
+                                                                     edn::list_t{ "odd?"_kw } } } };
     std::cout << data.type() << "\n";
     std::cout << data << "\n";
 
@@ -118,6 +120,21 @@ void run(const std::vector<std::string>&)
     // opts.max_inline_length = 120;
     // opts.compact_maps = true;
     edn::pretty_print(std::cout, data);
+
+    edn::pretty_print(std::cout, edn::parse(R"(
+        [{
+            :name "John Doe"
+            :age 30
+            :is_student false
+            :scores [95 88 76 89]
+            :address {
+                :street "123 Main St"
+                :city "Anytown"
+                :zip "12345"
+            }
+            :hobbies ["reading" "coding" "hiking"]
+        }]
+        )"));
     // demo_parser();
 }
 
