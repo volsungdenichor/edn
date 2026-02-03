@@ -723,19 +723,19 @@ namespace detail
 
 class pretty_printer
 {
-    std::ostream& os;
+    std::ostream& m_os;
     const pretty_print_options& m_options;
-    int current_indent = 0;
+    int m_current_indent = 0;
 
     pretty_printer& write_indent()
     {
-        os << std::string(static_cast<std::size_t>(current_indent), ' ');
+        m_os << std::string(static_cast<std::size_t>(m_current_indent), ' ');
         return *this;
     }
 
     pretty_printer& write_newline()
     {
-        os << "\n";
+        m_os << "\n";
         return *this;
     }
 
@@ -798,7 +798,7 @@ class pretty_printer
 
     pretty_printer& print_value_inline(const value_t& item)
     {
-        os << color_for_type(item) << item << write_ansi(&color_scheme::reset);
+        m_os << color_for_type(item) << item << write_ansi(&color_scheme::reset);
         return *this;
     }
 
@@ -810,11 +810,11 @@ class pretty_printer
 
     void print(const vector_t& item, bool inline_mode)
     {
-        os << write_ansi(&color_scheme::bracket) << "[" << write_ansi(&color_scheme::reset);
+        m_os << write_ansi(&color_scheme::bracket) << "[" << write_ansi(&color_scheme::reset);
 
         if (item.empty())
         {
-            os << write_ansi(&color_scheme::bracket) << "]" << write_ansi(&color_scheme::reset);
+            m_os << write_ansi(&color_scheme::bracket) << "]" << write_ansi(&color_scheme::reset);
             return;
         }
 
@@ -826,33 +826,33 @@ class pretty_printer
             {
                 if (it != item.begin())
                 {
-                    os << " ";
+                    m_os << " ";
                 }
                 print_value_inline(*it);
             }
         }
         else
         {
-            current_indent += m_options.indent_size;
+            m_current_indent += m_options.indent_size;
             for (auto it = item.begin(); it != item.end(); ++it)
             {
                 write_newline().write_indent();
                 print_value(*it, false);
             }
-            current_indent -= m_options.indent_size;
+            m_current_indent -= m_options.indent_size;
             write_newline().write_indent();
         }
 
-        os << write_ansi(&color_scheme::bracket) << "]" << write_ansi(&color_scheme::reset);
+        m_os << write_ansi(&color_scheme::bracket) << "]" << write_ansi(&color_scheme::reset);
     }
 
     void print(const list_t& item, bool inline_mode)
     {
-        os << write_ansi(&color_scheme::parenthesis) << "(" << write_ansi(&color_scheme::reset);
+        m_os << write_ansi(&color_scheme::parenthesis) << "(" << write_ansi(&color_scheme::reset);
 
         if (item.empty())
         {
-            os << write_ansi(&color_scheme::parenthesis) << ")" << write_ansi(&color_scheme::reset);
+            m_os << write_ansi(&color_scheme::parenthesis) << ")" << write_ansi(&color_scheme::reset);
             return;
         }
 
@@ -864,33 +864,33 @@ class pretty_printer
             {
                 if (it != item.begin())
                 {
-                    os << " ";
+                    m_os << " ";
                 }
                 print_value_inline(*it);
             }
         }
         else
         {
-            current_indent += m_options.indent_size;
+            m_current_indent += m_options.indent_size;
             for (auto it = item.begin(); it != item.end(); ++it)
             {
                 write_newline().write_indent();
                 print_value(*it, false);
             }
-            current_indent -= m_options.indent_size;
+            m_current_indent -= m_options.indent_size;
             write_newline().write_indent();
         }
 
-        os << write_ansi(&color_scheme::parenthesis) << ")" << write_ansi(&color_scheme::reset);
+        m_os << write_ansi(&color_scheme::parenthesis) << ")" << write_ansi(&color_scheme::reset);
     }
 
     void print(const set_t& item, bool inline_mode)
     {
-        os << write_ansi(&color_scheme::brace) << "#{" << write_ansi(&color_scheme::reset);
+        m_os << write_ansi(&color_scheme::brace) << "#{" << write_ansi(&color_scheme::reset);
 
         if (item.empty())
         {
-            os << write_ansi(&color_scheme::brace) << "}" << write_ansi(&color_scheme::reset);
+            m_os << write_ansi(&color_scheme::brace) << "}" << write_ansi(&color_scheme::reset);
             return;
         }
 
@@ -902,33 +902,33 @@ class pretty_printer
             {
                 if (it != item.begin())
                 {
-                    os << " ";
+                    m_os << " ";
                 }
                 print_value_inline(*it);
             }
         }
         else
         {
-            current_indent += m_options.indent_size;
+            m_current_indent += m_options.indent_size;
             for (auto it = item.begin(); it != item.end(); ++it)
             {
                 write_newline().write_indent();
                 print_value(*it, false);
             }
-            current_indent -= m_options.indent_size;
+            m_current_indent -= m_options.indent_size;
             write_newline().write_indent();
         }
 
-        os << write_ansi(&color_scheme::brace) << "}" << write_ansi(&color_scheme::reset);
+        m_os << write_ansi(&color_scheme::brace) << "}" << write_ansi(&color_scheme::reset);
     }
 
     void print(const map_t& item, bool inline_mode)
     {
-        os << write_ansi(&color_scheme::brace) << "{" << write_ansi(&color_scheme::reset);
+        m_os << write_ansi(&color_scheme::brace) << "{" << write_ansi(&color_scheme::reset);
 
         if (item.empty())
         {
-            os << write_ansi(&color_scheme::brace) << "}" << write_ansi(&color_scheme::reset);
+            m_os << write_ansi(&color_scheme::brace) << "}" << write_ansi(&color_scheme::reset);
             return;
         }
 
@@ -944,29 +944,29 @@ class pretty_printer
             {
                 if (it != item.begin())
                 {
-                    os << " ";
+                    m_os << " ";
                 }
                 print_value_inline(it->first);
-                os << " ";
+                m_os << " ";
                 print_value_inline(it->second);
             }
         }
         else
         {
             const int indent_increment = m_options.compact_maps ? 2 : m_options.indent_size;
-            current_indent += indent_increment;
+            m_current_indent += indent_increment;
             for (auto it = item.begin(); it != item.end(); ++it)
             {
                 write_newline().write_indent();
                 print_value(it->first, true);
-                os << " ";
+                m_os << " ";
                 print_value(it->second, true);
             }
-            current_indent -= indent_increment;
+            m_current_indent -= indent_increment;
             write_newline().write_indent();
         }
 
-        os << write_ansi(&color_scheme::brace) << "}" << write_ansi(&color_scheme::reset);
+        m_os << write_ansi(&color_scheme::brace) << "}" << write_ansi(&color_scheme::reset);
     }
 
     void print_value(const value_t& item, bool inline_mode)
@@ -989,13 +989,13 @@ class pretty_printer
         }
         else if (const auto maybe_tagged_element = item.if_tagged_element())
         {
-            os << write_ansi(&color_scheme::tag) << "#" << write_ansi(&color_scheme::reset);
-            os << write_ansi(&color_scheme::tag) << maybe_tagged_element->tag() << write_ansi(&color_scheme::reset) << " ";
+            m_os << write_ansi(&color_scheme::tag) << "#" << write_ansi(&color_scheme::reset);
+            m_os << write_ansi(&color_scheme::tag) << maybe_tagged_element->tag() << write_ansi(&color_scheme::reset) << " ";
             print_value(maybe_tagged_element->element(), inline_mode);
         }
         else if (const auto maybe_quoted_element = item.if_quoted_element())
         {
-            os << write_ansi(&color_scheme::tag) << "'" << write_ansi(&color_scheme::reset);
+            m_os << write_ansi(&color_scheme::tag) << "'" << write_ansi(&color_scheme::reset);
             print_value(maybe_quoted_element->element(), inline_mode);
         }
         else
@@ -1005,13 +1005,13 @@ class pretty_printer
     }
 
 public:
-    pretty_printer(std::ostream& os, const pretty_print_options& options) : os{ os }, m_options{ options } { }
+    pretty_printer(std::ostream& os, const pretty_print_options& options) : m_os{ os }, m_options{ options } { }
 
     std::ostream& operator()(const value_t& item)
     {
         print_value(item, false);
         write_newline();
-        return os;
+        return m_os;
     }
 };
 
