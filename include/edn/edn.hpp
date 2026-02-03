@@ -18,6 +18,97 @@
 namespace edn
 {
 
+template <class K, class V>
+struct ordered_map
+{
+    using key_type = K;
+    using mapped_type = V;
+    using value_type = std::pair<key_type, mapped_type>;
+
+    std::vector<value_type> m_items;
+
+    using iterator = typename std::vector<value_type>::iterator;
+    using const_iterator = typename std::vector<value_type>::const_iterator;
+
+    ordered_map() = default;
+    ordered_map(const ordered_map&) = default;
+    ordered_map(ordered_map&&) noexcept = default;
+
+    ordered_map(std::initializer_list<value_type> items)
+    {
+        for (const auto& v : items)
+        {
+            insert(v);
+        }
+    }
+
+    constexpr iterator begin() { return m_items.begin(); }
+    constexpr iterator end() { return m_items.end(); }
+    constexpr const_iterator begin() const { return m_items.begin(); }
+    constexpr const_iterator end() const { return m_items.end(); }
+    constexpr const_iterator cbegin() const { return begin(); }
+    constexpr const_iterator cend() const { return end(); }
+    constexpr bool empty() const { return m_items.empty(); }
+    constexpr std::size_t size() const { return m_items.size(); }
+
+    const_iterator find(const key_type& key) const
+    {
+        return std::find_if(begin(), end(), [&](const auto& p) { return p.first == key; });
+    }
+
+    iterator find(const key_type& key)
+    {
+        return std::find_if(begin(), end(), [&](const auto& p) { return p.first == key; });
+    }
+
+    mapped_type& operator[](const key_type& key)
+    {
+        auto it = find(key);
+        if (it != end())
+        {
+            return it->second;
+        }
+        m_items.emplace_back(key, mapped_type{});
+        return m_items.back().second;
+    }
+
+    std::pair<iterator, bool> emplace(const key_type& key, const mapped_type& value)
+    {
+        auto it = find(key);
+        if (it != end())
+        {
+            return std::make_pair(it, false);
+        }
+        m_items.emplace_back(key, value);
+        return std::make_pair(std::prev(end()), true);
+    }
+
+    std::pair<iterator, bool> insert(const value_type& p) { return emplace(p.first, p.second); }
+
+    const mapped_type& at(const key_type& key) const
+    {
+        auto it = find(key);
+        if (it == end())
+        {
+            throw std::out_of_range{ std::invoke(
+                [&]() -> std::string
+                {
+                    std::ostringstream ss;
+                    ss << "key not found in map_t: " << key;
+                    return ss.str();
+                }) };
+        }
+        return it->second;
+    }
+
+    friend constexpr bool operator==(const ordered_map& lhs, const ordered_map& rhs) { return lhs.m_items == rhs.m_items; }
+    friend constexpr bool operator!=(const ordered_map& lhs, const ordered_map& rhs) { return !(lhs == rhs); }
+    friend constexpr bool operator<(const ordered_map& lhs, const ordered_map& rhs) { return lhs.m_items < rhs.m_items; }
+    friend constexpr bool operator>(const ordered_map& lhs, const ordered_map& rhs) { return rhs < lhs; }
+    friend constexpr bool operator<=(const ordered_map& lhs, const ordered_map& rhs) { return !(rhs < lhs); }
+    friend constexpr bool operator>=(const ordered_map& lhs, const ordered_map& rhs) { return !(lhs < rhs); }
+};
+
 template <class T>
 struct box_t
 {
@@ -193,44 +284,10 @@ struct set_t : public std::set<value_t>
     friend std::ostream& operator<<(std::ostream& os, const set_t& item);
 };
 
-struct map_t
+struct map_t : public ordered_map<value_t, value_t>
 {
-    using key_type = value_t;
-    using mapped_type = value_t;
-    using value_type = std::pair<key_type, mapped_type>;
-
-    std::vector<value_type> m_items;
-
-    using iterator = std::vector<value_type>::iterator;
-    using const_iterator = std::vector<value_type>::const_iterator;
-
-    map_t() = default;
-    map_t(const map_t&) = default;
-    map_t(map_t&&) noexcept = default;
-
-    map_t(std::initializer_list<std::pair<value_t, value_t>> items);
-
-    constexpr auto begin() -> iterator { return m_items.begin(); }
-    constexpr auto end() -> iterator { return m_items.end(); }
-    constexpr auto begin() const -> const_iterator { return m_items.begin(); }
-    constexpr auto end() const -> const_iterator { return m_items.end(); }
-    constexpr auto cbegin() const -> const_iterator { return begin(); }
-    constexpr auto cend() const -> const_iterator { return end(); }
-    constexpr auto empty() const -> bool { return m_items.empty(); }
-    constexpr auto size() const -> std::size_t { return m_items.size(); }
-    auto find(const value_t& key) const -> const_iterator;
-    auto find(const value_t& key) -> iterator;
-    auto operator[](const value_t& key) -> value_t&;
-    auto insert(const std::pair<value_t, value_t>& p) -> std::pair<iterator, bool>;
-    auto emplace(const value_t& key, const value_t& value) -> std::pair<iterator, bool>;
-    auto at(const value_t& key) const -> const value_t&;
-
-    friend constexpr bool operator==(const map_t& lhs, const map_t& rhs);
-    friend constexpr bool operator!=(const map_t& lhs, const map_t& rhs);
-    friend constexpr bool operator<(const map_t& lhs, const map_t& rhs);
-    friend constexpr bool operator>(const map_t& lhs, const map_t& rhs);
-    friend constexpr bool operator<=(const map_t& lhs, const map_t& rhs);
-    friend constexpr bool operator>=(const map_t& lhs, const map_t& rhs);
+    using base_t = ordered_map<value_t, value_t>;
+    using base_t::base_t;
 
     friend std::ostream& operator<<(std::ostream& os, const map_t& item);
 };
@@ -459,87 +516,6 @@ inline std::ostream& operator<<(std::ostream& os, const tagged_element_t& item)
 inline std::ostream& operator<<(std::ostream& os, const quoted_element_t& item)
 {
     return os << "'" << item.element();
-}
-
-inline map_t::map_t(std::initializer_list<std::pair<value_t, value_t>> items) : m_items{ items } { }
-
-inline auto map_t::find(const value_t& key) const -> const_iterator
-{
-    return std::find_if(begin(), end(), [&](const auto& p) { return p.first == key; });
-}
-
-inline auto map_t::find(const value_t& key) -> iterator
-{
-    return std::find_if(begin(), end(), [&](const auto& p) { return p.first == key; });
-}
-
-inline auto map_t::operator[](const value_t& key) -> value_t&
-{
-    auto it = find(key);
-    if (it != end())
-        return it->second;
-    m_items.emplace_back(key, value_t{});
-    return m_items.back().second;
-}
-
-inline auto map_t::emplace(const value_t& key, const value_t& value) -> std::pair<iterator, bool>
-{
-    auto it = find(key);
-    if (it != end())
-        return std::make_pair(it, false);
-    m_items.emplace_back(key, value);
-    return std::make_pair(std::prev(end()), true);
-}
-
-inline auto map_t::insert(const std::pair<value_t, value_t>& p) -> std::pair<iterator, bool>
-{
-    return emplace(p.first, p.second);
-}
-
-inline auto map_t::at(const value_t& key) const -> const value_t&
-{
-    auto it = find(key);
-    if (it == end())
-    {
-        throw std::out_of_range{ std::invoke(
-            [&]() -> std::string
-            {
-                std::ostringstream ss;
-                ss << "key not found in map_t: " << key;
-                return ss.str();
-            }) };
-    }
-    return it->second;
-}
-
-constexpr inline bool operator==(const map_t& lhs, const map_t& rhs)
-{
-    return lhs.m_items == rhs.m_items;
-}
-
-constexpr inline bool operator!=(const map_t& lhs, const map_t& rhs)
-{
-    return !(lhs == rhs);
-}
-
-constexpr inline bool operator<(const map_t& lhs, const map_t& rhs)
-{
-    return lhs.m_items < rhs.m_items;
-}
-
-constexpr inline bool operator>(const map_t& lhs, const map_t& rhs)
-{
-    return rhs < lhs;
-}
-
-constexpr inline bool operator<=(const map_t& lhs, const map_t& rhs)
-{
-    return !(rhs < lhs);
-}
-
-constexpr inline bool operator>=(const map_t& lhs, const map_t& rhs)
-{
-    return !(lhs < rhs);
 }
 
 namespace detail
