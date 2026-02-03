@@ -16,14 +16,14 @@ jobs:
             os: ubuntu-latest
             cc: gcc-11
             cxx: g++-11
+            install: sudo apt-get update && sudo apt-get install -y gcc-11 g++-11
           - name: Ubuntu Clang
             os: ubuntu-latest
             cc: clang-14
             cxx: clang++-14
+            install: sudo apt-get update && sudo apt-get install -y clang-14
           - name: Windows MSVC
             os: windows-latest
-            cc: cl
-            cxx: cl
 
     runs-on: ${{ matrix.os }}
     name: ${{ matrix.name }}
@@ -31,8 +31,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Configure CMake
+      - name: Install compiler
+        if: matrix.install
+        run: ${{ matrix.install }}
+
+      - name: Configure CMake (Linux)
+        if: runner.os != 'Windows'
         run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=${{ matrix.cc }} -DCMAKE_CXX_COMPILER=${{ matrix.cxx }}
+
+      - name: Configure CMake (Windows)
+        if: runner.os == 'Windows'
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release
 
       - name: Build
         run: cmake --build build --config Release
