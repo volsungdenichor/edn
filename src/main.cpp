@@ -1,15 +1,15 @@
-#include <edn.hpp>
+#include <edn/edn.hpp>
 #include <fstream>
 #include <iostream>
 #include <memory>
+#include <string>
+#include <vector>
 
 struct path_t : public std::string
 {
     using base_t = std::string;
 
-    explicit path_t(std::string_view path) : base_t(path)
-    {
-    }
+    explicit path_t(std::string_view path) : base_t(path) { }
 };
 
 inline auto load_file(std::istream& is) -> std::string
@@ -22,97 +22,103 @@ inline auto load_file(const path_t& path) -> std::string
     std::ifstream file(path);
     if (!file)
     {
-        throw std::runtime_error{ edn::str("cannot open '", path, '"') };
+        throw std::runtime_error{ std::string("cannot open '") + path + "'" };
     }
     return load_file(file);
 }
 
-template <class... Ts>
-struct overloaded : Ts...
+void test_parse(const std::string& input)
 {
-    using Ts::operator()...;
-};
-
-template <class... Ts>
-overloaded(Ts...) -> overloaded<Ts...>;
-
-template <class Op>
-struct binary_op
-{
-    auto operator()(const std::vector<edn::value_t>& args) const -> edn::value_t
+    std::cout << "\n=== Parsing: " << input << " ===\n";
+    try
     {
-        if (args.size() != 2)
-        {
-            throw std::runtime_error{ "binary_op: two arguments expected" };
-        }
-        static const auto op = Op{};
-        return std::visit(
-            overloaded{ [](edn::integer_t lt, edn::integer_t rt) -> edn::value_t { return op(lt, rt); },
-                        [](edn::floating_point_t lt, edn::integer_t rt) -> edn::value_t { return op(lt, rt); },
-                        [](edn::integer_t lt, edn::floating_point_t rt) -> edn::value_t { return op(lt, rt); },
-                        [](edn::floating_point_t lt, edn::floating_point_t rt) -> edn::value_t { return op(lt, rt); },
-                        [](const auto&, const auto&) -> edn::value_t { return edn::nil_t{}; }
-
-            },
-            args.at(0).m_data,
-            args.at(1).m_data);
+        edn::value_t result = edn::parse(input);
+        std::cout << "Success! Result:\n";
+        edn::pretty_print(std::cout, result);
     }
-};
-
-auto type(const std::vector<edn::value_t>& args) -> edn::value_t
-{
-    static const auto name = [](edn::value_type_t t) -> edn::symbol_t { return edn::symbol_t{ edn::str(t).c_str() }; };
-    return name(args.at(0).type());
+    catch (const edn::parse_error& e)
+    {
+        std::cout << "Error: " << e.what() << "\n";
+    }
 }
 
-auto print(const std::vector<edn::value_t>& args) -> edn::value_t
+void demo_parser()
 {
-    for (const edn::value_t& arg : args)
-    {
-        if (auto v = arg.string())
-        {
-            std::cout << *v;
-        }
-        else
-        {
-            std::cout << arg;
-        }
-    }
-    std::cout << std::endl;
-    return {};
+    std::cout << "EDN Parser with Location-Aware Error Reporting\n";
+    std::cout << "===============================================\n";
+
+    // Valid examples
+    test_parse("42");
+    test_parse("3.14");
+    test_parse("true");
+    test_parse("nil");
+    test_parse(":keyword");
+    test_parse("\"hello world\"");
+    test_parse("\\newline");
+    test_parse("symbol");
+    test_parse("[1 2 3]");
+    test_parse("(+ 1 2)");
+    test_parse("{:name \"John\" :age 30}");
+    test_parse("#{1 2 3}");
+    test_parse("#inst \"2024-01-01\"");
+    test_parse("'(1 2 3)");
+
+    // Complex nested structure
+    test_parse(R"(
+    {:person {:name "Alice"
+              :age 30
+              :hobbies ["reading" "coding"]}
+     :scores [95 87 92]}
+    )");
+
+    test_parse(R"(
+    [{:person {:name "Alice"
+              :age 30
+              :hobbies ["reading" "coding"]}
+     :scores [95 87 92]}
+     {:person {:name "Alice"
+              :age 30
+              :hobbies ["reading" "coding"]}
+     :scores [95 87 92]}]
+    )");
+
+    // Error examples - these will show line numbers
+    test_parse("[1 2 3");                 // Unterminated vector
+    test_parse("{:a 1 :b}");              // Odd number of map elements
+    test_parse("\"unterminated string");  // Unterminated string
+
+    // Multi-line error example
+    test_parse(R"(
+    [1 2 3
+     4 5 6
+     7 8
+    )");  // Unterminated vector on line 4
+
+    // Map error with location
+    test_parse(R"(
+    {:a 1
+     :b 2
+     :c 3
+     :d}
+    )");  // Odd number of elements - error on closing brace
 }
 
-void run(const std::vector<std::string>& args)
+void run(const std::vector<std::string>&)
 {
-    auto stack = std::invoke(
-        [&]() -> edn::stack_t
-        {
-            edn::stack_t result{ nullptr };
-            result.insert(edn::symbol_t{ "type" }, edn::callable_t{ &type });
-            result.insert(edn::symbol_t{ "print" }, edn::callable_t{ &print });
-            result.insert(edn::symbol_t{ "+" }, edn::callable_t{ binary_op<std::plus<>>{} });
-            result.insert(edn::symbol_t{ "-" }, edn::callable_t{ binary_op<std::minus<>>{} });
-            result.insert(edn::symbol_t{ "*" }, edn::callable_t{ binary_op<std::multiplies<>>{} });
-            result.insert(edn::symbol_t{ "/" }, edn::callable_t{ binary_op<std::divides<>>{} });
+    edn::value_t data = edn::vector_t{ edn::keyword_t{ "all" },
+                                       edn::vector_t{ edn::vector_t{ edn::keyword_t{ "ge" }, 5 } },
+                                       edn::vector_t{ edn::keyword_t{ "lt" }, 10 },
+                                       edn::vector_t{ edn::keyword_t{ "odd?" } } };
+    std::cout << data.type() << "\n";
+    std::cout << data << "\n";
 
-            result.insert(edn::symbol_t{ "=" }, edn::callable_t{ binary_op<std::equal_to<>>{} });
-            result.insert(edn::symbol_t{ "!=" }, edn::callable_t{ binary_op<std::not_equal_to<>>{} });
-            result.insert(edn::symbol_t{ "/=" }, edn::callable_t{ binary_op<std::not_equal_to<>>{} });
-            result.insert(edn::symbol_t{ "<" }, edn::callable_t{ binary_op<std::less<>>{} });
-            result.insert(edn::symbol_t{ ">" }, edn::callable_t{ binary_op<std::greater<>>{} });
-            result.insert(edn::symbol_t{ "<=" }, edn::callable_t{ binary_op<std::less_equal<>>{} });
-            result.insert(edn::symbol_t{ ">=" }, edn::callable_t{ binary_op<std::greater_equal<>>{} });
-
-            return result;
-        });
-    const path_t path = args.size() >= 2 ? path_t{ args.at(1) } : path_t{ "../src/program.txt" };
-
-    const std::string file_content = load_file(path);
-
-    const edn::value_t value = edn::parse(file_content);
-    std::cout << "expr: " << value << "\n\n";
-    const edn::value_t result = edn::evaluate(value, stack);
-    std::cout << "result: " << result << "\n";
+    // edn::pretty_print_options opts;
+    // opts.colors = edn::color_scheme{};
+    // opts.indent_size = 2;
+    // opts.max_inline_length = 120;
+    // opts.compact_maps = true;
+    edn::pretty_print(std::cout, data);
+    // demo_parser();
 }
 
 int main(int argc, char** argv)
