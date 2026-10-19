@@ -215,7 +215,7 @@ private:
         {
             for (const value_t& v : input)
             {
-                overloads.push_back(create_overload(std::vector<value_t>{ *v.if_list() }));
+                overloads.push_back(create_overload(*v.if_list()));
             }
         }
         else
