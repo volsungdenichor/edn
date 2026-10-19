@@ -3,9 +3,7 @@
 #pragma once
 
 #include <edn/edn.hpp>
-#include <map>
 #include <numeric>
-#include <optional>
 
 namespace edn
 {

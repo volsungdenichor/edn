@@ -26,7 +26,7 @@ inline auto str(Args&&... args) -> std::string
 }
 
 template <class K, class V>
-struct ordered_map
+struct ordered_map_t
 {
     using key_type = K;
     using mapped_type = V;
@@ -37,11 +37,11 @@ struct ordered_map
     using iterator = typename std::vector<value_type>::iterator;
     using const_iterator = typename std::vector<value_type>::const_iterator;
 
-    ordered_map() = default;
-    ordered_map(const ordered_map&) = default;
-    ordered_map(ordered_map&&) noexcept = default;
+    ordered_map_t() = default;
+    ordered_map_t(const ordered_map_t&) = default;
+    ordered_map_t(ordered_map_t&&) noexcept = default;
 
-    ordered_map(std::initializer_list<value_type> items)
+    ordered_map_t(std::initializer_list<value_type> items)
     {
         for (const auto& v : items)
         {
@@ -102,12 +102,15 @@ struct ordered_map
         return it->second;
     }
 
-    friend constexpr bool operator==(const ordered_map& lhs, const ordered_map& rhs) { return lhs.m_items == rhs.m_items; }
-    friend constexpr bool operator!=(const ordered_map& lhs, const ordered_map& rhs) { return !(lhs == rhs); }
-    friend constexpr bool operator<(const ordered_map& lhs, const ordered_map& rhs) { return lhs.m_items < rhs.m_items; }
-    friend constexpr bool operator>(const ordered_map& lhs, const ordered_map& rhs) { return rhs < lhs; }
-    friend constexpr bool operator<=(const ordered_map& lhs, const ordered_map& rhs) { return !(rhs < lhs); }
-    friend constexpr bool operator>=(const ordered_map& lhs, const ordered_map& rhs) { return !(lhs < rhs); }
+    friend constexpr bool operator==(const ordered_map_t& lhs, const ordered_map_t& rhs)
+    {
+        return lhs.m_items == rhs.m_items;
+    }
+    friend constexpr bool operator!=(const ordered_map_t& lhs, const ordered_map_t& rhs) { return !(lhs == rhs); }
+    friend constexpr bool operator<(const ordered_map_t& lhs, const ordered_map_t& rhs) { return lhs.m_items < rhs.m_items; }
+    friend constexpr bool operator>(const ordered_map_t& lhs, const ordered_map_t& rhs) { return rhs < lhs; }
+    friend constexpr bool operator<=(const ordered_map_t& lhs, const ordered_map_t& rhs) { return !(rhs < lhs); }
+    friend constexpr bool operator>=(const ordered_map_t& lhs, const ordered_map_t& rhs) { return !(lhs < rhs); }
 };
 
 template <class T>
@@ -167,11 +170,11 @@ struct unbox_fn
 static constexpr inline auto unbox = unbox_fn{};
 
 template <class Visitor>
-struct unboxing_visitor
+struct unboxing_visitor_t
 {
     Visitor m_visitor;
 
-    constexpr unboxing_visitor(Visitor visitor) : m_visitor(std::move(visitor)) { }
+    constexpr unboxing_visitor_t(Visitor visitor) : m_visitor(std::move(visitor)) { }
 
     template <class... Args>
     constexpr auto operator()(Args&&... args) const -> decltype(std::invoke(m_visitor, unbox(std::forward<Args>(args))...))
@@ -181,7 +184,7 @@ struct unboxing_visitor
 };
 
 template <class Visitor>
-unboxing_visitor(Visitor&&) -> unboxing_visitor<std::decay_t<Visitor>>;
+unboxing_visitor_t(Visitor&&) -> unboxing_visitor_t<std::decay_t<Visitor>>;
 
 enum class value_type_t
 {
@@ -285,9 +288,9 @@ struct set_t : public std::set<value_t>
     friend std::ostream& operator<<(std::ostream& os, const set_t& item);
 };
 
-struct map_t : public ordered_map<value_t, value_t>
+struct map_t : public ordered_map_t<value_t, value_t>
 {
-    using base_t = ordered_map<value_t, value_t>;
+    using base_t = ordered_map_t<value_t, value_t>;
     using base_t::base_t;
 
     friend std::ostream& operator<<(std::ostream& os, const map_t& item);
@@ -406,7 +409,7 @@ struct value_t
             constexpr auto operator()(const quoted_element_t&) const -> value_type_t { return value_type_t::quoted_element; }
             constexpr auto operator()(const callable_t&) const -> value_type_t { return value_type_t::callable; }
         };
-        return std::visit(unboxing_visitor{ visitor{} }, m_data);
+        return std::visit(unboxing_visitor_t{ visitor{} }, m_data);
     }
 
     constexpr bool is_nil() const { return std::holds_alternative<nil_t>(m_data); }
@@ -568,7 +571,7 @@ inline void format_character(std::ostream& os, character_t v)
     os << '\\' << v;
 }
 
-struct print_visitor
+struct print_visitor_t
 {
     std::ostream& os;
 
@@ -589,7 +592,7 @@ struct print_visitor
     void operator()(const callable_t& v) const { os << v; }
 };
 
-struct eq_visitor
+struct eq_visitor_t
 {
     bool operator()(nil_t, nil_t) const { return true; }
     bool operator()(boolean_t lt, boolean_t rt) const { return lt == rt; }
@@ -619,7 +622,7 @@ struct eq_visitor
     }
 };
 
-struct lt_visitor
+struct lt_visitor_t
 {
     bool operator()(nil_t, nil_t) const { return false; }
     bool operator()(boolean_t lt, boolean_t rt) const { return lt < rt; }
@@ -650,18 +653,18 @@ struct lt_visitor
 
 inline std::ostream& operator<<(std::ostream& os, const value_t& item)
 {
-    std::visit(unboxing_visitor{ detail::print_visitor{ os } }, item.m_data);
+    std::visit(unboxing_visitor_t{ detail::print_visitor_t{ os } }, item.m_data);
     return os;
 }
 
 inline constexpr bool operator==(const value_t& lhs, const value_t& rhs)
 {
-    return std::visit(unboxing_visitor{ detail::eq_visitor{} }, lhs.m_data, rhs.m_data);
+    return std::visit(unboxing_visitor_t{ detail::eq_visitor_t{} }, lhs.m_data, rhs.m_data);
 }
 
 inline constexpr bool operator<(const value_t& lhs, const value_t& rhs)
 {
-    return std::visit(unboxing_visitor{ detail::lt_visitor{} }, lhs.m_data, rhs.m_data);
+    return std::visit(unboxing_visitor_t{ detail::lt_visitor_t{} }, lhs.m_data, rhs.m_data);
 }
 
 inline constexpr bool operator>(const value_t& lhs, const value_t& rhs)
@@ -692,7 +695,7 @@ constexpr std::string_view cyan = "\033[36m";
 constexpr std::string_view white = "\033[37m";
 }  // namespace ansi
 
-struct color_scheme
+struct color_scheme_t
 {
     std::string_view reset = ansi::reset;
 
@@ -710,10 +713,10 @@ struct color_scheme
     std::string_view brace = ansi::white;
 };
 
-struct pretty_print_options
+struct pretty_print_options_t
 {
     int indent_size = 2;
-    std::optional<color_scheme> colors = color_scheme{};
+    std::optional<color_scheme_t> colors = color_scheme_t{};
     std::size_t max_inline_length = 60;
     bool compact_maps = true;
 };
@@ -721,25 +724,25 @@ struct pretty_print_options
 namespace detail
 {
 
-class pretty_printer
+class pretty_printer_t
 {
     std::ostream& m_os;
-    const pretty_print_options& m_options;
+    const pretty_print_options_t& m_options;
     int m_current_indent = 0;
 
-    pretty_printer& write_indent()
+    pretty_printer_t& write_indent()
     {
         m_os << std::string(static_cast<std::size_t>(m_current_indent), ' ');
         return *this;
     }
 
-    pretty_printer& write_newline()
+    pretty_printer_t& write_newline()
     {
         m_os << "\n";
         return *this;
     }
 
-    std::string_view write_ansi(std::string_view color_scheme::*type) const
+    std::string_view write_ansi(std::string_view color_scheme_t::* type) const
     {
         return m_options.colors ? (*m_options.colors).*type : "";
     }
@@ -751,37 +754,37 @@ class pretty_printer
 
         if (item.is_nil())
         {
-            return write_ansi(&color_scheme::nil);
+            return write_ansi(&color_scheme_t::nil);
         }
         if (item.if_boolean())
         {
-            return write_ansi(&color_scheme::boolean);
+            return write_ansi(&color_scheme_t::boolean);
         }
         if (item.if_integer())
         {
-            return write_ansi(&color_scheme::number);
+            return write_ansi(&color_scheme_t::number);
         }
         if (item.if_floating_point())
         {
-            return write_ansi(&color_scheme::number);
+            return write_ansi(&color_scheme_t::number);
         }
         if (item.if_character())
         {
-            return write_ansi(&color_scheme::character);
+            return write_ansi(&color_scheme_t::character);
         }
         if (item.if_string())
         {
-            return write_ansi(&color_scheme::string);
+            return write_ansi(&color_scheme_t::string);
         }
         if (item.if_symbol())
         {
-            return write_ansi(&color_scheme::symbol);
+            return write_ansi(&color_scheme_t::symbol);
         }
         if (item.if_keyword())
         {
-            return write_ansi(&color_scheme::keyword);
+            return write_ansi(&color_scheme_t::keyword);
         }
-        return write_ansi(&color_scheme::reset);
+        return write_ansi(&color_scheme_t::reset);
     }
 
     static bool is_simple_value(const value_t& item)
@@ -796,9 +799,9 @@ class pretty_printer
         return temp.str().length();
     }
 
-    pretty_printer& print_value_inline(const value_t& item)
+    pretty_printer_t& print_value_inline(const value_t& item)
     {
-        m_os << color_for_type(item) << item << write_ansi(&color_scheme::reset);
+        m_os << color_for_type(item) << item << write_ansi(&color_scheme_t::reset);
         return *this;
     }
 
@@ -810,11 +813,11 @@ class pretty_printer
 
     void print(const vector_t& item, bool inline_mode)
     {
-        m_os << write_ansi(&color_scheme::bracket) << "[" << write_ansi(&color_scheme::reset);
+        m_os << write_ansi(&color_scheme_t::bracket) << "[" << write_ansi(&color_scheme_t::reset);
 
         if (item.empty())
         {
-            m_os << write_ansi(&color_scheme::bracket) << "]" << write_ansi(&color_scheme::reset);
+            m_os << write_ansi(&color_scheme_t::bracket) << "]" << write_ansi(&color_scheme_t::reset);
             return;
         }
 
@@ -843,16 +846,16 @@ class pretty_printer
             write_newline().write_indent();
         }
 
-        m_os << write_ansi(&color_scheme::bracket) << "]" << write_ansi(&color_scheme::reset);
+        m_os << write_ansi(&color_scheme_t::bracket) << "]" << write_ansi(&color_scheme_t::reset);
     }
 
     void print(const list_t& item, bool inline_mode)
     {
-        m_os << write_ansi(&color_scheme::parenthesis) << "(" << write_ansi(&color_scheme::reset);
+        m_os << write_ansi(&color_scheme_t::parenthesis) << "(" << write_ansi(&color_scheme_t::reset);
 
         if (item.empty())
         {
-            m_os << write_ansi(&color_scheme::parenthesis) << ")" << write_ansi(&color_scheme::reset);
+            m_os << write_ansi(&color_scheme_t::parenthesis) << ")" << write_ansi(&color_scheme_t::reset);
             return;
         }
 
@@ -881,16 +884,16 @@ class pretty_printer
             write_newline().write_indent();
         }
 
-        m_os << write_ansi(&color_scheme::parenthesis) << ")" << write_ansi(&color_scheme::reset);
+        m_os << write_ansi(&color_scheme_t::parenthesis) << ")" << write_ansi(&color_scheme_t::reset);
     }
 
     void print(const set_t& item, bool inline_mode)
     {
-        m_os << write_ansi(&color_scheme::brace) << "#{" << write_ansi(&color_scheme::reset);
+        m_os << write_ansi(&color_scheme_t::brace) << "#{" << write_ansi(&color_scheme_t::reset);
 
         if (item.empty())
         {
-            m_os << write_ansi(&color_scheme::brace) << "}" << write_ansi(&color_scheme::reset);
+            m_os << write_ansi(&color_scheme_t::brace) << "}" << write_ansi(&color_scheme_t::reset);
             return;
         }
 
@@ -919,16 +922,16 @@ class pretty_printer
             write_newline().write_indent();
         }
 
-        m_os << write_ansi(&color_scheme::brace) << "}" << write_ansi(&color_scheme::reset);
+        m_os << write_ansi(&color_scheme_t::brace) << "}" << write_ansi(&color_scheme_t::reset);
     }
 
     void print(const map_t& item, bool inline_mode)
     {
-        m_os << write_ansi(&color_scheme::brace) << "{" << write_ansi(&color_scheme::reset);
+        m_os << write_ansi(&color_scheme_t::brace) << "{" << write_ansi(&color_scheme_t::reset);
 
         if (item.empty())
         {
-            m_os << write_ansi(&color_scheme::brace) << "}" << write_ansi(&color_scheme::reset);
+            m_os << write_ansi(&color_scheme_t::brace) << "}" << write_ansi(&color_scheme_t::reset);
             return;
         }
 
@@ -966,7 +969,7 @@ class pretty_printer
             write_newline().write_indent();
         }
 
-        m_os << write_ansi(&color_scheme::brace) << "}" << write_ansi(&color_scheme::reset);
+        m_os << write_ansi(&color_scheme_t::brace) << "}" << write_ansi(&color_scheme_t::reset);
     }
 
     void print_value(const value_t& item, bool inline_mode)
@@ -989,13 +992,14 @@ class pretty_printer
         }
         else if (const auto maybe_tagged_element = item.if_tagged_element())
         {
-            m_os << write_ansi(&color_scheme::tag) << "#" << write_ansi(&color_scheme::reset);
-            m_os << write_ansi(&color_scheme::tag) << maybe_tagged_element->tag() << write_ansi(&color_scheme::reset) << " ";
+            m_os << write_ansi(&color_scheme_t::tag) << "#" << write_ansi(&color_scheme_t::reset);
+            m_os << write_ansi(&color_scheme_t::tag) << maybe_tagged_element->tag() << write_ansi(&color_scheme_t::reset)
+                 << " ";
             print_value(maybe_tagged_element->element(), inline_mode);
         }
         else if (const auto maybe_quoted_element = item.if_quoted_element())
         {
-            m_os << write_ansi(&color_scheme::tag) << "'" << write_ansi(&color_scheme::reset);
+            m_os << write_ansi(&color_scheme_t::tag) << "'" << write_ansi(&color_scheme_t::reset);
             print_value(maybe_quoted_element->element(), inline_mode);
         }
         else
@@ -1005,7 +1009,7 @@ class pretty_printer
     }
 
 public:
-    pretty_printer(std::ostream& os, const pretty_print_options& options) : m_os{ os }, m_options{ options } { }
+    pretty_printer_t(std::ostream& os, const pretty_print_options_t& options) : m_os{ os }, m_options{ options } { }
 
     std::ostream& operator()(const value_t& item)
     {
@@ -1017,13 +1021,13 @@ public:
 
 }  // namespace detail
 
-inline void pretty_print(std::ostream& os, const value_t& item, const pretty_print_options& options = {})
+inline void pretty_print(std::ostream& os, const value_t& item, const pretty_print_options_t& options = {})
 {
-    detail::pretty_printer printer(os, options);
+    detail::pretty_printer_t printer(os, options);
     printer(item);
 }
 
-inline std::string to_pretty_string(const value_t& item, const pretty_print_options& options = {})
+inline std::string to_pretty_string(const value_t& item, const pretty_print_options_t& options = {})
 {
     std::ostringstream ss;
     pretty_print(ss, item, options);

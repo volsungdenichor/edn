@@ -200,7 +200,7 @@ edn::value_t result = edn::evaluate(expr, env);
 ### Custom Pretty Printing
 
 ```cpp
-edn::pretty_print_options opts;
+edn::pretty_print_options_t opts;
 opts.indent_size = 4;
 opts.max_inline_length = 40;
 opts.compact_maps = false;
