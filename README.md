@@ -186,14 +186,62 @@ void process_value(const edn::value_t& value) {
 ```cpp
 #include <edn/evaluate.hpp>
 
-// Create an environment with built-in functions
-edn::stack_t env{nullptr};
+// Create an environment with the built-in arithmetic operators.
+auto env = edn::make_standard_environment();
 
 // Evaluate expressions
 edn::value_t expr = edn::parse("(+ 1 2 3)");
 edn::value_t result = edn::evaluate(expr, env);
 // result is 6
 ```
+
+The standard environment provides `+`, `-`, `*`, and `/`. Addition and
+multiplication accept zero arguments and return their identity values; the
+other operators require at least one argument. Integer arithmetic stays
+integer-valued when possible and promotes to floating point on overflow.
+Division returns an integer for exact integer quotients and floating point
+otherwise.
+
+It also provides the function combinators `partial` and `comp`:
+
+```clojure
+(def add5 (partial + 5))      ; binds leading arguments
+(add5 1)                      ; => 6
+
+(defn inc [x] (+ x 1))
+((comp inc (partial * 2)) 5)  ; => 11, applied right to left
+```
+
+`(partial f)` and `(comp f)` return `f` itself, and `(comp)` returns the
+identity function. The rightmost function given to `comp` receives all the
+arguments; each function to its left receives the previous result.
+
+#### Scope lifetime and the stack manager
+
+Scopes are reference-counted, so closures can safely outlive the `let`, `fn`
+call, or environment handle that created them. A scope that stores a function
+closing over itself (for example, `(defn f [] ...)`) forms a reference cycle.
+Each scope is registered with an `edn::stack_manager_t`, which frees such
+cycles with a cycle collector:
+
+```cpp
+edn::stack_manager_t manager;               // optional: collection_threshold
+auto env = edn::make_standard_environment(manager);
+
+edn::evaluate(edn::parse("(defn add [a b] (+ a b))"), env);
+
+manager.collect();      // frees unreachable scopes, returns how many were freed
+manager.scope_count();  // number of live scopes
+```
+
+- Collection also runs automatically when the number of live scopes reaches a
+  threshold, which then adapts to the live scope count.
+- Without an explicit manager, a per-thread default manager is used.
+- Destroying a manager releases all of its scopes. Any surviving `stack_t` or
+  closure from that manager then throws `std::logic_error` when used.
+- A manager is not thread-safe. Use one manager per thread.
+- Custom C++ callables should not capture `stack_t` handles. The collector
+  cannot see inside them, so a cycle through such a callable is never freed.
 
 ## 📖 Advanced Features
 
