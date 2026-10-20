@@ -1,7 +1,7 @@
 #include <gmock/gmock.h>
 
 #include <edn/evaluate.hpp>
-#include <optional>
+#include <memory>
 #include <stdexcept>
 #include <string_view>
 
@@ -11,6 +11,17 @@ namespace
 auto eval(std::string_view expression, edn::stack_t& stack) -> edn::value_t
 {
     return edn::evaluate(edn::parse(expression), stack);
+}
+
+// Binds `token`, a callable owning a resource, in stack; the returned weak_ptr reports
+// whether anything still keeps the resource alive.
+auto insert_token(edn::stack_t& stack) -> std::weak_ptr<int>
+{
+    auto resource = std::make_shared<int>(42);
+    stack.insert(
+        edn::symbol_t{ "token" },
+        edn::callable_t{ [resource](const std::vector<edn::value_t>&) -> edn::value_t { return *resource; } });
+    return resource;
 }
 
 }  // namespace
@@ -179,121 +190,6 @@ TEST(evaluate, closure_outlives_the_environment_handle_it_was_created_in)
     EXPECT_THAT((*closure.if_callable())({}), 9);
 }
 
-TEST(stack_manager, frees_scopes_without_cycles_immediately)
-{
-    edn::stack_manager_t manager;
-    {
-        edn::stack_t stack{ manager };
-        eval("(let [x 1] ((fn [y] y) x))", stack);
-        EXPECT_THAT(manager.scope_count(), 1);
-    }
-
-    EXPECT_THAT(manager.scope_count(), 0);
-}
-
-TEST(stack_manager, collects_function_stored_in_the_scope_it_closes_over)
-{
-    edn::stack_manager_t manager;
-    {
-        edn::stack_t stack{ manager };
-        eval("(defn identity [x] x)", stack);
-        EXPECT_THAT(eval("(identity 42)", stack), 42);
-    }
-    EXPECT_THAT(manager.scope_count(), 1);
-
-    EXPECT_THAT(manager.collect(), 1);
-    EXPECT_THAT(manager.scope_count(), 0);
-}
-
-TEST(stack_manager, collects_closures_cycling_through_let_scopes)
-{
-    edn::stack_manager_t manager;
-    {
-        auto environment = edn::make_standard_environment(manager);
-        eval("(def f (let [a 1 g (fn [x] (+ a x))] (fn [y] (g y))))", environment);
-        EXPECT_THAT(eval("(f 2)", environment), 3);
-    }
-
-    manager.collect();
-    EXPECT_THAT(manager.scope_count(), 0);
-}
-
-TEST(stack_manager, does_not_collect_scopes_reachable_from_handles)
-{
-    edn::stack_manager_t manager;
-    edn::stack_t stack{ manager };
-    eval("(defn constantly [x] (fn [] x))", stack);
-    eval("(def answer (constantly 42))", stack);
-
-    EXPECT_THAT(manager.collect(), 0);
-    EXPECT_THAT(eval("(answer)", stack), 42);
-}
-
-TEST(stack_manager, does_not_collect_scopes_reachable_from_held_closures)
-{
-    edn::stack_manager_t manager;
-    edn::value_t closure;
-    {
-        edn::stack_t stack{ manager };
-        eval("(defn constantly [x] (fn [] x))", stack);
-        closure = eval("(constantly 42)", stack);
-    }
-
-    manager.collect();
-    ASSERT_NE(closure.if_callable(), nullptr);
-    EXPECT_THAT((*closure.if_callable())({}), 42);
-
-    closure = edn::nil;
-    manager.collect();
-    EXPECT_THAT(manager.scope_count(), 0);
-}
-
-TEST(stack_manager, collection_during_evaluation_is_safe)
-{
-    edn::stack_manager_t manager{ 1 };
-    {
-        auto environment = edn::make_standard_environment(manager);
-        eval("(defn adder [x] (fn [y] (fn [z] (+ x y z))))", environment);
-        eval("(defn twice ([f] (twice f 1)) ([f x] (f (f x))))", environment);
-
-        EXPECT_THAT(eval("(((adder 1) 2) 3)", environment), 6);
-        EXPECT_THAT(eval("(let [inc (fn [x] (+ x 1))] (twice inc))", environment), 3);
-    }
-
-    manager.collect();
-    EXPECT_THAT(manager.scope_count(), 0);
-}
-
-TEST(stack_manager, collects_automatically_when_threshold_is_reached)
-{
-    edn::stack_manager_t manager{ 8 };
-    edn::stack_t stack{ manager };
-
-    for (int i = 0; i < 100; ++i)
-    {
-        eval("(def tmp ((fn [] (defn inner [] 1) 0)))", stack);
-    }
-
-    EXPECT_THAT(manager.scope_count(), testing::Le(16));
-}
-
-TEST(stack_manager, destroying_manager_invalidates_surviving_handles)
-{
-    edn::value_t closure;
-    std::optional<edn::stack_t> stack;
-    {
-        edn::stack_manager_t manager;
-        stack.emplace(manager);
-        closure = eval("(let [x 1] (fn [] x))", *stack);
-    }
-
-    EXPECT_THAT(
-        [&]() { return eval("x", *stack); },
-        testing::ThrowsMessage<std::runtime_error>(testing::HasSubstr("has been destroyed")));
-    ASSERT_NE(closure.if_callable(), nullptr);
-    EXPECT_THROW((*closure.if_callable())({}), std::logic_error);
-}
-
 TEST(evaluate, throws_for_unresolved_symbols)
 {
     edn::stack_t stack{ nullptr };
@@ -443,39 +339,96 @@ TEST(evaluate, partial_and_comp_reject_invalid_arguments)
         testing::ThrowsMessage<std::runtime_error>(testing::HasSubstr("requires exactly one argument")));
 }
 
-TEST(stack_manager, collects_cycles_through_partial_and_comp)
+TEST(scope_lifetime, environment_frees_everything_it_defined)
 {
-    edn::stack_manager_t manager;
+    std::weak_ptr<int> token;
     {
-        auto environment = edn::make_standard_environment(manager);
-        eval("(defn affine [a b x] (+ (* a x) b))", environment);
-        eval("(def f (partial affine 2 1))", environment);
-        eval("(def g (comp f f))", environment);
-        eval("(def h (partial (comp g) 0))", environment);
-        EXPECT_THAT(eval("(g 1)", environment), 7);
-        EXPECT_THAT(eval("(h)", environment), 3);
+        auto environment = edn::make_standard_environment();
+        token = insert_token(environment);
+        eval("(defn call-token [] (token))", environment);
+        eval("(def held (let [t token] (fn [] (t))))", environment);
+        eval("(def add-token (partial + (token)))", environment);
+        eval("(def composed (comp call-token held))", environment);
+        EXPECT_THAT(eval("(add-token (held) (call-token))", environment), 126);
+        EXPECT_FALSE(token.expired());
     }
 
-    manager.collect();
-    EXPECT_THAT(manager.scope_count(), 0);
+    EXPECT_TRUE(token.expired());
 }
 
-TEST(stack_manager, does_not_collect_scopes_reachable_from_held_partial)
+TEST(scope_lifetime, let_scopes_are_freed_after_evaluation)
 {
-    edn::stack_manager_t manager;
-    std::optional<edn::value_t> add_ten;
+    edn::stack_t stack;
+    const auto token = insert_token(stack);
+
+    EXPECT_THAT(eval("(let [t token f (fn [] (t)) g (fn [] (f))] (g))", stack), 42);
+    EXPECT_THAT(token.use_count(), 1);
+}
+
+TEST(scope_lifetime, function_scopes_are_freed_after_evaluation)
+{
+    edn::stack_t stack;
+    const auto token = insert_token(stack);
+    eval("(defn wrap [x] (fn [] (x)))", stack);
+
+    EXPECT_THAT(eval("((wrap token))", stack), 42);
+    EXPECT_THAT(token.use_count(), 1);
+}
+
+TEST(scope_lifetime, closure_held_from_cpp_keeps_its_locals_alive)
+{
+    edn::stack_t stack;
+    const auto token = insert_token(stack);
+    edn::value_t closure = eval("(let [t token] (fn [] (t)))", stack);
+    EXPECT_THAT(token.use_count(), 2);
+
+    ASSERT_NE(closure.if_callable(), nullptr);
+    EXPECT_THAT((*closure.if_callable())({}), 42);
+
+    closure = edn::nil;
+    EXPECT_THAT(token.use_count(), 1);
+}
+
+TEST(scope_lifetime, recursion_through_defn_works)
+{
+    auto environment = edn::make_standard_environment();
+    eval("(defn twice ([f] (twice f 1)) ([f x] (f (f x))))", environment);
+
+    EXPECT_THAT(eval("(twice (partial + 1))", environment), 3);
+}
+
+TEST(scope_lifetime, def_inside_a_function_defines_a_global)
+{
+    edn::stack_t stack;
+    eval("(defn setup [x] (def answer x))", stack);
+    eval("(setup 42)", stack);
+
+    EXPECT_THAT(eval("answer", stack), 42);
+}
+
+TEST(scope_lifetime, let_binding_cannot_refer_to_itself)
+{
+    edn::stack_t stack;
+
+    EXPECT_THAT(
+        [&]() { return eval("(let [f (fn [] (f))] (f))", stack); },
+        testing::ThrowsMessage<std::runtime_error>(testing::HasSubstr("Unrecognized symbol `f`")));
+}
+
+TEST(scope_lifetime, closure_using_globals_throws_after_environment_is_destroyed)
+{
+    edn::value_t uses_global;
+    edn::value_t uses_locals;
     {
-        auto environment = edn::make_standard_environment(manager);
-        eval("(defn adder [x] (fn [y] (+ x y)))", environment);
-        eval("(defn add3 [a b c] (+ a b c))", environment);
-        add_ten = eval("(comp (adder 4) (partial add3 1 5))", environment);
+        auto environment = edn::make_standard_environment();
+        uses_global = eval("(let [x 1] (fn [] (+ x 1)))", environment);
+        uses_locals = eval("(let [x 1] (fn [] x))", environment);
     }
 
-    manager.collect();
-    ASSERT_NE(add_ten->if_callable(), nullptr);
-    EXPECT_THAT((*add_ten->if_callable())({ edn::value_t{ 0 } }), 10);
-
-    add_ten.reset();
-    manager.collect();
-    EXPECT_THAT(manager.scope_count(), 0);
+    ASSERT_THAT(uses_locals.if_callable(), testing::NotNull());
+    EXPECT_THAT((*uses_locals.if_callable())({}), 1);
+    ASSERT_NE(uses_global.if_callable(), nullptr);
+    EXPECT_THAT(
+        [&]() { return (*uses_global.if_callable())({}); },
+        testing::ThrowsMessage<std::logic_error>(testing::HasSubstr("root environment of this scope has been destroyed")));
 }

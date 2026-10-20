@@ -332,6 +332,8 @@ struct callable_t
     friend std::ostream& operator<<(std::ostream& os, const callable_t&) { return os << "<< callable >>"; }
 };
 
+using number_t = std::variant<integer_t, floating_point_t>;
+
 struct value_t
 {
     using data_type = std::variant<
@@ -750,8 +752,9 @@ class pretty_printer_t
     std::string_view color_for_type(const value_t& item) const
     {
         if (!m_options.colors)
+        {
             return "";
-
+        }
         if (item.is_nil())
         {
             return write_ansi(&color_scheme_t::nil);
@@ -806,12 +809,12 @@ class pretty_printer_t
     }
 
     template <class T>
-    static bool is_compact(const T& item)
+    static bool is_compact(const T& item, std::size_t max_size = 3)
     {
-        return item.size() <= 3 && std::all_of(item.begin(), item.end(), is_simple_value);
+        return item.size() <= max_size && std::all_of(item.begin(), item.end(), is_simple_value);
     }
 
-    void print(const vector_t& item, bool inline_mode)
+    void print(const vector_t& item, bool inline_mode, std::size_t max_compact_size = 3)
     {
         m_os << write_ansi(&color_scheme_t::bracket) << "[" << write_ansi(&color_scheme_t::reset);
 
@@ -821,7 +824,7 @@ class pretty_printer_t
             return;
         }
 
-        const bool should_inline = inline_mode || is_compact(item);
+        const bool should_inline = inline_mode || is_compact(item, max_compact_size);
 
         if (should_inline && estimate_length(value_t(item)) < m_options.max_inline_length)
         {
@@ -849,7 +852,7 @@ class pretty_printer_t
         m_os << write_ansi(&color_scheme_t::bracket) << "]" << write_ansi(&color_scheme_t::reset);
     }
 
-    void print(const list_t& item, bool inline_mode)
+    void print(const list_t& item, bool inline_mode, std::size_t max_compact_size = 3)
     {
         m_os << write_ansi(&color_scheme_t::parenthesis) << "(" << write_ansi(&color_scheme_t::reset);
 
@@ -859,7 +862,7 @@ class pretty_printer_t
             return;
         }
 
-        const bool should_inline = inline_mode || is_compact(item);
+        const bool should_inline = inline_mode || is_compact(item, max_compact_size);
 
         if (should_inline && estimate_length(value_t(item)) < m_options.max_inline_length)
         {
@@ -887,7 +890,7 @@ class pretty_printer_t
         m_os << write_ansi(&color_scheme_t::parenthesis) << ")" << write_ansi(&color_scheme_t::reset);
     }
 
-    void print(const set_t& item, bool inline_mode)
+    void print(const set_t& item, bool inline_mode, std::size_t max_compact_size = 3)
     {
         m_os << write_ansi(&color_scheme_t::brace) << "#{" << write_ansi(&color_scheme_t::reset);
 
@@ -897,7 +900,7 @@ class pretty_printer_t
             return;
         }
 
-        const bool should_inline = inline_mode || is_compact(item);
+        const bool should_inline = inline_mode || is_compact(item, max_compact_size);
 
         if (should_inline && estimate_length(value_t(item)) < m_options.max_inline_length)
         {

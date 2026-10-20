@@ -107,13 +107,15 @@ void run(const std::vector<std::string>&)
 {
     using namespace edn::literals;
 
+    // demo_parser();
+
     edn::pretty_print(
         std::cout,
-        edn::list_t{ "each-item"_kw,
-                     edn::list_t{ "and"_kw,
-                                  edn::list_t{ edn::list_t{ edn::list_t{ "ge"_kw, 5 } },
-                                               edn::list_t{ "lt"_kw, 10 },
-                                               edn::list_t{ "odd?"_kw } } } });
+        edn::vector_t{
+            "each-item"_kw,
+            edn::vector_t{
+                "and"_kw,
+                edn::vector_t{ edn::vector_t{ "ge"_kw, 5 }, edn::vector_t{ "lt"_kw, 10 }, edn::vector_t{ "odd?"_kw } } } });
 
     edn::pretty_print(std::cout, edn::parse(R"(
         [{
@@ -131,11 +133,8 @@ void run(const std::vector<std::string>&)
         )"));
     edn::pretty_print(
         std::cout,
-        edn::map_t{ { edn::keyword_t("server"),
-                      edn::map_t{ { edn::keyword_t("host"), "localhost" },
-                                  { edn::keyword_t("port"), 8080 },
-                                  { edn::keyword_t("ssl"), true } } },
-                    { edn::keyword_t("endpoints"), edn::vector_t{ "/api/users", "/api/posts", "/api/comments" } } });
+        edn::map_t{ { "server"_kw, edn::map_t{ { "host"_kw, "localhost" }, { "port"_kw, 8080 }, { "ssl"_kw, true } } },
+                    { "endpoints"_kw, edn::vector_t{ "/api/users", "/api/posts", "/api/comments" } } });
 }
 
 int main(int argc, char** argv)

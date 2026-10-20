@@ -216,32 +216,31 @@ It also provides the function combinators `partial` and `comp`:
 identity function. The rightmost function given to `comp` receives all the
 arguments; each function to its left receives the previous result.
 
-#### Scope lifetime and the stack manager
+#### Scopes and lifetime
 
-Scopes are reference-counted, so closures can safely outlive the `let`, `fn`
-call, or environment handle that created them. A scope that stores a function
-closing over itself (for example, `(defn f [] ...)`) forms a reference cycle.
-Each scope is registered with an `edn::stack_manager_t`, which frees such
-cycles with a cycle collector:
+Scopes follow Clojure's rules, which keeps them free of reference cycles. Plain
+reference counting therefore frees everything, and no garbage collector is
+needed:
+
+- `def` and `defn` always define in the root (global) environment, even
+  inside a function body.
+- `let` bindings are sequential, and a binding cannot refer to itself:
+  `(let [f (fn [] (f))] ...)` fails with an unrecognized symbol. For
+  recursion, use `defn`.
+- Closures keep their local scopes (`let` bindings and function arguments)
+  alive, so they can outlive the expression that created them.
+- Closures look up globals in the root environment without owning it. Keep the
+  environment alive while you use closures that refer to globals. Once the
+  environment is destroyed, such lookups throw `std::logic_error`.
 
 ```cpp
-edn::stack_manager_t manager;               // optional: collection_threshold
-auto env = edn::make_standard_environment(manager);
-
-edn::evaluate(edn::parse("(defn add [a b] (+ a b))"), env);
-
-manager.collect();      // frees unreachable scopes, returns how many were freed
-manager.scope_count();  // number of live scopes
+edn::value_t f;
+{
+    auto env = edn::make_standard_environment();
+    f = edn::evaluate(edn::parse("(let [x 1] (fn [] x))"), env);
+}
+(*f.if_callable())({});  // 1: uses only its own locals
 ```
-
-- Collection also runs automatically when the number of live scopes reaches a
-  threshold, which then adapts to the live scope count.
-- Without an explicit manager, a per-thread default manager is used.
-- Destroying a manager releases all of its scopes. Any surviving `stack_t` or
-  closure from that manager then throws `std::logic_error` when used.
-- A manager is not thread-safe. Use one manager per thread.
-- Custom C++ callables should not capture `stack_t` handles. The collector
-  cannot see inside them, so a cycle through such a callable is never freed.
 
 ## 📖 Advanced Features
 
