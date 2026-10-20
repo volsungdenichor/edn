@@ -24,169 +24,172 @@ enum class arithmetic_operator_t
     division
 };
 
-inline auto as_number(const value_t& value, std::string_view name) -> number_t
+struct arithmetic_t
 {
-    if (const auto integer = value.if_integer())
-    {
-        return *integer;
-    }
-    if (const auto floating_point = value.if_floating_point())
-    {
-        return *floating_point;
-    }
-    throw std::invalid_argument{ str("operator `", name, "` requires numeric arguments") };
-}
+    arithmetic_operator_t operation;
+    std::string_view name;
 
-inline auto as_floating_point(const number_t& value) -> floating_point_t
-{
-    if (const auto integer = std::get_if<integer_t>(&value))
+    value_t operator()(const std::vector<value_t>& args) const
     {
-        return static_cast<floating_point_t>(*integer);
-    }
-    return std::get<floating_point_t>(value);
-}
-
-inline auto checked_add(integer_t lhs, integer_t rhs) -> std::optional<integer_t>
-{
-    constexpr auto min = std::numeric_limits<integer_t>::min();
-    constexpr auto max = std::numeric_limits<integer_t>::max();
-    if ((rhs > 0 && lhs > max - rhs) || (rhs < 0 && lhs < min - rhs))
-    {
-        return {};
-    }
-    return lhs + rhs;
-}
-
-inline auto checked_subtract(integer_t lhs, integer_t rhs) -> std::optional<integer_t>
-{
-    constexpr auto min = std::numeric_limits<integer_t>::min();
-    constexpr auto max = std::numeric_limits<integer_t>::max();
-    if ((rhs < 0 && lhs > max + rhs) || (rhs > 0 && lhs < min + rhs))
-    {
-        return {};
-    }
-    return lhs - rhs;
-}
-
-inline auto checked_multiply(integer_t lhs, integer_t rhs) -> std::optional<integer_t>
-{
-    constexpr auto min = std::numeric_limits<integer_t>::min();
-    constexpr auto max = std::numeric_limits<integer_t>::max();
-    if (lhs == 0 || rhs == 0)
-    {
-        return 0;
-    }
-    if ((lhs == -1 && rhs == min) || (rhs == -1 && lhs == min))
-    {
-        return {};
-    }
-    if ((lhs > 0 && rhs > 0 && lhs > max / rhs) || (lhs > 0 && rhs < 0 && rhs < min / lhs)
-        || (lhs < 0 && rhs > 0 && lhs < min / rhs) || (lhs < 0 && rhs < 0 && lhs < max / rhs))
-    {
-        return {};
-    }
-    return lhs * rhs;
-}
-
-inline auto apply_arithmetic(
-    const number_t& lhs, const number_t& rhs, arithmetic_operator_t operation, std::string_view name) -> number_t
-{
-    if (const auto left = std::get_if<integer_t>(&lhs))
-    {
-        if (const auto right = std::get_if<integer_t>(&rhs))
+        const bool has_identity
+            = operation == arithmetic_operator_t::addition || operation == arithmetic_operator_t::multiplication;
+        if (!has_identity && args.empty())
         {
-            switch (operation)
+            throw std::invalid_argument{ str("operator `", name, "` requires at least one argument") };
+        }
+
+        number_t result
+            = operation == arithmetic_operator_t::multiplication ? number_t{ integer_t{ 1 } } : number_t{ integer_t{ 0 } };
+        std::size_t index = 0;
+        if (!has_identity)
+        {
+            result = as_number(args.front(), name);
+            index = 1;
+            if (args.size() == 1)
             {
-                case arithmetic_operator_t::addition:
-                    if (const auto result = checked_add(*left, *right))
-                    {
-                        return *result;
-                    }
-                    break;
-                case arithmetic_operator_t::subtraction:
-                    if (const auto result = checked_subtract(*left, *right))
-                    {
-                        return *result;
-                    }
-                    break;
-                case arithmetic_operator_t::multiplication:
-                    if (const auto result = checked_multiply(*left, *right))
-                    {
-                        return *result;
-                    }
-                    break;
-                case arithmetic_operator_t::division:
-                    if (*right == 0)
-                    {
-                        throw std::domain_error{ str("division by zero in `", name, "`") };
-                    }
-                    if (!(*left == std::numeric_limits<integer_t>::min() && *right == -1) && *left % *right == 0)
-                    {
-                        return *left / *right;
-                    }
-                    break;
+                if (operation == arithmetic_operator_t::subtraction)
+                {
+                    result = apply_arithmetic(integer_t{ 0 }, result, operation, name);
+                }
+                else
+                {
+                    result = apply_arithmetic(integer_t{ 1 }, result, operation, name);
+                }
             }
         }
+
+        for (; index < args.size(); ++index)
+        {
+            result = apply_arithmetic(result, as_number(args.at(index), name), operation, name);
+        }
+
+        return std::visit([](auto value) -> value_t { return value; }, result);
     }
 
-    const floating_point_t left = as_floating_point(lhs);
-    const floating_point_t right = as_floating_point(rhs);
-    switch (operation)
+    static number_t apply_arithmetic(
+        const number_t& lhs, const number_t& rhs, arithmetic_operator_t operation, std::string_view name)
     {
-        case arithmetic_operator_t::addition: return left + right;
-        case arithmetic_operator_t::subtraction: return left - right;
-        case arithmetic_operator_t::multiplication: return left * right;
-        case arithmetic_operator_t::division:
-            if (right == 0.0)
+        if (const auto left = std::get_if<integer_t>(&lhs))
+        {
+            if (const auto right = std::get_if<integer_t>(&rhs))
             {
-                throw std::domain_error{ str("division by zero in `", name, "`") };
+                switch (operation)
+                {
+                    case arithmetic_operator_t::addition:
+                        if (const auto result = checked_add(*left, *right))
+                        {
+                            return *result;
+                        }
+                        break;
+                    case arithmetic_operator_t::subtraction:
+                        if (const auto result = checked_subtract(*left, *right))
+                        {
+                            return *result;
+                        }
+                        break;
+                    case arithmetic_operator_t::multiplication:
+                        if (const auto result = checked_multiply(*left, *right))
+                        {
+                            return *result;
+                        }
+                        break;
+                    case arithmetic_operator_t::division:
+                        if (*right == 0)
+                        {
+                            throw std::domain_error{ str("division by zero in `", name, "`") };
+                        }
+                        if (!(*left == std::numeric_limits<integer_t>::min() && *right == -1) && *left % *right == 0)
+                        {
+                            return *left / *right;
+                        }
+                        break;
+                }
             }
-            return left / right;
+        }
+
+        const floating_point_t left = as_floating_point(lhs);
+        const floating_point_t right = as_floating_point(rhs);
+        switch (operation)
+        {
+            case arithmetic_operator_t::addition: return left + right;
+            case arithmetic_operator_t::subtraction: return left - right;
+            case arithmetic_operator_t::multiplication: return left * right;
+            case arithmetic_operator_t::division:
+                if (right == 0.0)
+                {
+                    throw std::domain_error{ str("division by zero in `", name, "`") };
+                }
+                return left / right;
+        }
+        throw std::logic_error{ "unknown arithmetic operator" };
     }
-    throw std::logic_error{ "unknown arithmetic operator" };
-}
 
-inline auto arithmetic_callable(arithmetic_operator_t operation, std::string_view name) -> value_t
-{
-    return callable_t{ [operation, name = std::string{ name }](const std::vector<value_t>& args) -> value_t
-                       {
-                           const bool has_identity = operation == arithmetic_operator_t::addition
-                                                     || operation == arithmetic_operator_t::multiplication;
-                           if (!has_identity && args.empty())
-                           {
-                               throw std::invalid_argument{ str("operator `", name, "` requires at least one argument") };
-                           }
+    static number_t as_number(const value_t& value, std::string_view name)
+    {
+        if (const auto integer = value.if_integer())
+        {
+            return *integer;
+        }
+        if (const auto floating_point = value.if_floating_point())
+        {
+            return *floating_point;
+        }
+        throw std::invalid_argument{ str("operator `", name, "` requires numeric arguments") };
+    }
 
-                           number_t result = operation == arithmetic_operator_t::multiplication ? number_t{ integer_t{ 1 } }
-                                                                                                : number_t{ integer_t{ 0 } };
-                           std::size_t index = 0;
-                           if (!has_identity)
-                           {
-                               result = as_number(args.front(), name);
-                               index = 1;
-                               if (args.size() == 1)
-                               {
-                                   if (operation == arithmetic_operator_t::subtraction)
-                                   {
-                                       result = apply_arithmetic(integer_t{ 0 }, result, operation, name);
-                                   }
-                                   else
-                                   {
-                                       result = apply_arithmetic(integer_t{ 1 }, result, operation, name);
-                                   }
-                               }
-                           }
+    static floating_point_t as_floating_point(const number_t& value)
+    {
+        if (const auto integer = std::get_if<integer_t>(&value))
+        {
+            return static_cast<floating_point_t>(*integer);
+        }
+        return std::get<floating_point_t>(value);
+    }
 
-                           for (; index < args.size(); ++index)
-                           {
-                               result = apply_arithmetic(result, as_number(args.at(index), name), operation, name);
-                           }
+    static std::optional<integer_t> checked_add(integer_t lhs, integer_t rhs)
+    {
+        constexpr auto min = std::numeric_limits<integer_t>::min();
+        constexpr auto max = std::numeric_limits<integer_t>::max();
+        if ((rhs > 0 && lhs > max - rhs) || (rhs < 0 && lhs < min - rhs))
+        {
+            return {};
+        }
+        return lhs + rhs;
+    }
 
-                           return std::visit([](auto value) -> value_t { return value; }, result);
-                       } };
-}
+    static std::optional<integer_t> checked_subtract(integer_t lhs, integer_t rhs)
+    {
+        constexpr auto min = std::numeric_limits<integer_t>::min();
+        constexpr auto max = std::numeric_limits<integer_t>::max();
+        if ((rhs < 0 && lhs > max + rhs) || (rhs > 0 && lhs < min + rhs))
+        {
+            return {};
+        }
+        return lhs - rhs;
+    }
 
-inline auto as_callable(const value_t& value, std::string_view name) -> const callable_t&
+    static std::optional<integer_t> checked_multiply(integer_t lhs, integer_t rhs)
+    {
+        constexpr auto min = std::numeric_limits<integer_t>::min();
+        constexpr auto max = std::numeric_limits<integer_t>::max();
+        if (lhs == 0 || rhs == 0)
+        {
+            return 0;
+        }
+        if ((lhs == -1 && rhs == min) || (rhs == -1 && lhs == min))
+        {
+            return {};
+        }
+        if ((lhs > 0 && rhs > 0 && lhs > max / rhs) || (lhs > 0 && rhs < 0 && rhs < min / lhs)
+            || (lhs < 0 && rhs > 0 && lhs < min / rhs) || (lhs < 0 && rhs < 0 && lhs < max / rhs))
+        {
+            return {};
+        }
+        return lhs * rhs;
+    }
+};
+
+static const callable_t& as_callable(const value_t& value, std::string_view name)
 {
     if (const auto callable = value.if_callable())
     {
@@ -197,83 +200,80 @@ inline auto as_callable(const value_t& value, std::string_view name) -> const ca
 
 struct partial_t
 {
-    value_t function;
-    std::vector<value_t> bound_args;
-
-    auto operator()(const std::vector<value_t>& args) const -> value_t
+    struct impl_t
     {
-        std::vector<value_t> all_args;
-        all_args.reserve(bound_args.size() + args.size());
-        all_args.insert(all_args.end(), bound_args.begin(), bound_args.end());
-        all_args.insert(all_args.end(), args.begin(), args.end());
-        return as_callable(function, "partial")(all_args);
+        value_t function;
+        std::vector<value_t> bound_args;
+
+        value_t operator()(const std::vector<value_t>& args) const
+        {
+            std::vector<value_t> all_args;
+            all_args.reserve(bound_args.size() + args.size());
+            all_args.insert(all_args.end(), bound_args.begin(), bound_args.end());
+            all_args.insert(all_args.end(), args.begin(), args.end());
+            return as_callable(function, "partial")(all_args);
+        }
+    };
+
+    value_t operator()(const std::vector<value_t>& args) const
+    {
+        if (args.empty())
+        {
+            throw std::invalid_argument{ "`partial` requires at least one argument" };
+        }
+        as_callable(args.front(), "partial");
+        if (args.size() == 1)
+        {
+            return args.front();
+        }
+        return callable_t{ impl_t{ args.front(), std::vector<value_t>(args.begin() + 1, args.end()) } };
     }
 };
 
 struct comp_t
 {
-    std::vector<value_t> functions;
-
-    auto operator()(const std::vector<value_t>& args) const -> value_t
+    struct impl_t
     {
-        auto it = functions.rbegin();
-        value_t result = as_callable(*it, "comp")(args);
-        for (++it; it != functions.rend(); ++it)
-        {
-            result = as_callable(*it, "comp")(std::vector<value_t>{ result });
-        }
-        return result;
-    }
-};
+        std::vector<value_t> functions;
 
-inline auto partial_callable() -> value_t
-{
-    return callable_t{ [](const std::vector<value_t>& args) -> value_t
-                       {
-                           if (args.empty())
-                           {
-                               throw std::invalid_argument{ "`partial` requires at least one argument" };
-                           }
-                           as_callable(args.front(), "partial");
-                           if (args.size() == 1)
-                           {
-                               return args.front();
-                           }
-                           return callable_t{ partial_t{ args.front(),
-                                                         std::vector<value_t>(args.begin() + 1, args.end()) } };
-                       } };
-}
-
-inline auto comp_callable() -> value_t
-{
-    return callable_t{
-        [](const std::vector<value_t>& args) -> value_t
+        value_t operator()(const std::vector<value_t>& args) const
         {
-            if (args.empty())
+            auto it = functions.rbegin();
+            value_t result = as_callable(*it, "comp")(args);
+            for (++it; it != functions.rend(); ++it)
             {
-                return callable_t{ [](const std::vector<value_t>& inner) -> value_t
-                                   {
-                                       if (inner.size() != 1)
-                                       {
-                                           throw std::invalid_argument{
-                                               "identity function returned by `(comp)` requires exactly one argument"
-                                           };
-                                       }
-                                       return inner.front();
-                                   } };
+                result = as_callable(*it, "comp")(std::vector<value_t>{ result });
             }
-            for (const value_t& arg : args)
-            {
-                as_callable(arg, "comp");
-            }
-            if (args.size() == 1)
-            {
-                return args.front();
-            }
-            return callable_t{ comp_t{ args } };
+            return result;
         }
     };
-}
+
+    value_t operator()(const std::vector<value_t>& args) const
+    {
+        if (args.empty())
+        {
+            return callable_t{ [](const std::vector<value_t>& inner) -> value_t
+                               {
+                                   if (inner.size() != 1)
+                                   {
+                                       throw std::invalid_argument{
+                                           "identity function returned by `(comp)` requires exactly one argument"
+                                       };
+                                   }
+                                   return inner.front();
+                               } };
+        }
+        for (const value_t& arg : args)
+        {
+            as_callable(arg, "comp");
+        }
+        if (args.size() == 1)
+        {
+            return args.front();
+        }
+        return callable_t{ impl_t{ args } };
+    }
+};
 
 }  // namespace evaluate_detail
 
@@ -383,15 +383,19 @@ inline auto make_standard_environment() -> stack_t
 {
     stack_t environment;
     environment.insert(
-        symbol_t{ "+" }, evaluate_detail::arithmetic_callable(evaluate_detail::arithmetic_operator_t::addition, "+"));
+        symbol_t{ "+" },
+        callable_t{ evaluate_detail::arithmetic_t{ evaluate_detail::arithmetic_operator_t::addition, "+" } });
     environment.insert(
-        symbol_t{ "-" }, evaluate_detail::arithmetic_callable(evaluate_detail::arithmetic_operator_t::subtraction, "-"));
+        symbol_t{ "-" },
+        callable_t{ evaluate_detail::arithmetic_t{ evaluate_detail::arithmetic_operator_t::subtraction, "-" } });
     environment.insert(
-        symbol_t{ "*" }, evaluate_detail::arithmetic_callable(evaluate_detail::arithmetic_operator_t::multiplication, "*"));
+        symbol_t{ "*" },
+        callable_t{ evaluate_detail::arithmetic_t{ evaluate_detail::arithmetic_operator_t::multiplication, "*" } });
     environment.insert(
-        symbol_t{ "/" }, evaluate_detail::arithmetic_callable(evaluate_detail::arithmetic_operator_t::division, "/"));
-    environment.insert(symbol_t{ "partial" }, evaluate_detail::partial_callable());
-    environment.insert(symbol_t{ "comp" }, evaluate_detail::comp_callable());
+        symbol_t{ "/" },
+        callable_t{ evaluate_detail::arithmetic_t{ evaluate_detail::arithmetic_operator_t::division, "/" } });
+    environment.insert(symbol_t{ "partial" }, callable_t{ evaluate_detail::partial_t{} });
+    environment.insert(symbol_t{ "comp" }, callable_t{ evaluate_detail::comp_t{} });
     return environment;
 }
 
@@ -456,6 +460,7 @@ private:
         }
         return value;
     }
+
     struct clojure_t
     {
         struct overload_t
