@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <edn/edn.hpp>
 #include <limits>
+#include <map>
 #include <memory>
 #include <numeric>
 #include <optional>
@@ -186,6 +187,74 @@ struct arithmetic_t
             return {};
         }
         return lhs * rhs;
+    }
+};
+
+inline bool is_truthy(const value_t& value)
+{
+    const auto boolean = value.if_boolean();
+    return value.type() != value_type_t::nil && (!boolean || *boolean);
+}
+
+enum class comparison_operator_t
+{
+    equal,
+    not_equal,
+    less,
+    less_equal,
+    greater,
+    greater_equal
+};
+
+struct comparison_t
+{
+    comparison_operator_t operation;
+    std::string_view name;
+
+    value_t operator()(const std::vector<value_t>& args) const
+    {
+        if (args.empty())
+        {
+            throw std::invalid_argument{ str("operator `", name, "` requires at least one argument") };
+        }
+        if (operation == comparison_operator_t::equal || operation == comparison_operator_t::not_equal)
+        {
+            const bool equal = std::all_of(
+                args.begin() + 1, args.end(), [&](const value_t& value) { return args.front() == value; });
+            return operation == comparison_operator_t::equal ? equal : !equal;
+        }
+
+        auto previous = arithmetic_t::as_floating_point(arithmetic_t::as_number(args.front(), name));
+        bool result = true;
+        for (auto it = args.begin() + 1; it != args.end(); ++it)
+        {
+            const auto current = arithmetic_t::as_floating_point(arithmetic_t::as_number(*it, name));
+            switch (operation)
+            {
+                case comparison_operator_t::less: result = (previous < current) && result; break;
+                case comparison_operator_t::less_equal: result = (previous <= current) && result; break;
+                case comparison_operator_t::greater: result = (previous > current) && result; break;
+                case comparison_operator_t::greater_equal: result = (previous >= current) && result; break;
+                default: throw std::logic_error{ "unknown numeric comparison operator" };
+            }
+            previous = current;
+        }
+        return result;
+    }
+};
+
+struct predicate_t
+{
+    std::string_view name;
+    bool (*test)(const value_t&);
+
+    value_t operator()(const std::vector<value_t>& args) const
+    {
+        if (args.size() != 1)
+        {
+            throw std::invalid_argument{ str("`", name, "` requires exactly one argument") };
+        }
+        return test(args.front());
     }
 };
 
@@ -396,6 +465,42 @@ inline auto make_standard_environment() -> stack_t
         callable_t{ evaluate_detail::arithmetic_t{ evaluate_detail::arithmetic_operator_t::division, "/" } });
     environment.insert(symbol_t{ "partial" }, callable_t{ evaluate_detail::partial_t{} });
     environment.insert(symbol_t{ "comp" }, callable_t{ evaluate_detail::comp_t{} });
+    using comparison = evaluate_detail::comparison_operator_t;
+    for (const auto& [name, operation] : {
+             std::pair{ "=", comparison::equal },
+             std::pair{ "not=", comparison::not_equal },
+             std::pair{ "<", comparison::less },
+             std::pair{ "<=", comparison::less_equal },
+             std::pair{ ">", comparison::greater },
+             std::pair{ ">=", comparison::greater_equal } })
+    {
+        environment.insert(symbol_t{ name }, callable_t{ evaluate_detail::comparison_t{ operation, name } });
+    }
+    for (const auto& predicate : {
+             evaluate_detail::predicate_t{ "nil?", [](const value_t& v) { return v.type() == value_type_t::nil; } },
+             evaluate_detail::predicate_t{ "boolean?", [](const value_t& v) { return v.if_boolean() != nullptr; } },
+             evaluate_detail::predicate_t{ "true?", [](const value_t& v) { return v.if_boolean() && *v.if_boolean(); } },
+             evaluate_detail::predicate_t{ "false?", [](const value_t& v) { return v.if_boolean() && !*v.if_boolean(); } },
+             evaluate_detail::predicate_t{ "number?", [](const value_t& v) { return v.if_integer() || v.if_floating_point(); } },
+             evaluate_detail::predicate_t{ "integer?", [](const value_t& v) { return v.if_integer() != nullptr; } },
+             evaluate_detail::predicate_t{ "float?", [](const value_t& v) { return v.if_floating_point() != nullptr; } },
+             evaluate_detail::predicate_t{ "char?", [](const value_t& v) { return v.if_character() != nullptr; } },
+             evaluate_detail::predicate_t{ "string?", [](const value_t& v) { return v.if_string() != nullptr; } },
+             evaluate_detail::predicate_t{ "symbol?", [](const value_t& v) { return v.if_symbol() != nullptr; } },
+             evaluate_detail::predicate_t{ "keyword?", [](const value_t& v) { return v.if_keyword() != nullptr; } },
+             evaluate_detail::predicate_t{ "list?", [](const value_t& v) { return v.if_list() != nullptr; } },
+             evaluate_detail::predicate_t{ "vector?", [](const value_t& v) { return v.if_vector() != nullptr; } },
+             evaluate_detail::predicate_t{ "set?", [](const value_t& v) { return v.if_set() != nullptr; } },
+             evaluate_detail::predicate_t{ "map?", [](const value_t& v) { return v.if_map() != nullptr; } },
+             evaluate_detail::predicate_t{ "fn?", [](const value_t& v) { return v.if_callable() != nullptr; } },
+             evaluate_detail::predicate_t{ "coll?", [](const value_t& v) {
+                 return v.if_list() || v.if_vector() || v.if_set() || v.if_map();
+             } },
+             evaluate_detail::predicate_t{ "sequential?", [](const value_t& v) { return v.if_list() || v.if_vector(); } },
+             evaluate_detail::predicate_t{ "not", [](const value_t& v) { return !evaluate_detail::is_truthy(v); } } })
+    {
+        environment.insert(symbol_t{ predicate.name }, callable_t{ predicate });
+    }
     return environment;
 }
 
@@ -592,7 +697,38 @@ private:
         return stack.define(*input.at(0).if_symbol(), eval_callable({ input.begin() + 1, input.end() }, stack));
     }
 
-    auto eval_boolean(const value_t& value, stack_t& stack) const -> bool { return *do_eval(value, stack).if_boolean(); }
+    auto eval_boolean(const value_t& value, stack_t& stack) const -> bool
+    {
+        return evaluate_detail::is_truthy(do_eval(value, stack));
+    }
+
+    auto eval_and(const std::vector<value_t>& input, stack_t& stack) const -> value_t
+    {
+        value_t result = true;
+        for (const value_t& item : input)
+        {
+            result = do_eval(item, stack);
+            if (!evaluate_detail::is_truthy(result))
+            {
+                break;
+            }
+        }
+        return result;
+    }
+
+    auto eval_or(const std::vector<value_t>& input, stack_t& stack) const -> value_t
+    {
+        value_t result = nil;
+        for (const value_t& item : input)
+        {
+            result = do_eval(item, stack);
+            if (evaluate_detail::is_truthy(result))
+            {
+                break;
+            }
+        }
+        return result;
+    }
 
     auto eval_if(const std::vector<value_t>& input, stack_t& stack) const -> value_t
     {
@@ -645,6 +781,8 @@ private:
             { symbol_t{ "if" }, &evaluate_fn::eval_if },        //
             { symbol_t{ "cond" }, &evaluate_fn::eval_cond },    //
             { symbol_t{ "do" }, &evaluate_fn::eval_do },        //
+            { symbol_t{ "and" }, &evaluate_fn::eval_and },      //
+            { symbol_t{ "or" }, &evaluate_fn::eval_or },        //
         };
 
         if (const auto h = head.if_symbol())

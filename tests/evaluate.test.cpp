@@ -32,6 +32,186 @@ TEST(evaluate, value_evaluates_to_itself)
     EXPECT_THAT(edn::evaluate(3, stack), 3);
 }
 
+TEST(evaluate, numeric_comparisons_check_every_adjacent_pair)
+{
+    auto environment = edn::make_standard_environment();
+    for (const auto expression : {
+             "(< 1 2 3)", "(<= 1 1.0 2)", "(> 3 2.5 1)", "(>= 3 3.0 1)",
+             "(< -2147483648 2147483647)", "(< 2147483647 2147483648.0)",
+             "(< 1)", "(<= 1)", "(> 1)", "(>= 1)" })
+    {
+        SCOPED_TRACE(expression);
+        EXPECT_THAT(eval(expression, environment), true);
+    }
+    for (const auto expression : {
+             "(< 1 3 2)", "(< 1 1.0)", "(<= 2 1)", "(> 3 1 2)", "(> 1 1.0)", "(>= 1 2)" })
+    {
+        SCOPED_TRACE(expression);
+        EXPECT_THAT(eval(expression, environment), false);
+    }
+}
+
+TEST(evaluate, equality_uses_existing_value_equality_and_not_equal_negates_it)
+{
+    auto environment = edn::make_standard_environment();
+    for (const auto expression : {
+             "(= 1)", "(= nil nil)", "(= 1 1 1)", "(= [1 {:a 2}] [1 {:a 2}])",
+             "(= 'x 'x)", "(not= 1 1 2)", "(not= 1 1.0)", "(not= true 1)" })
+    {
+        SCOPED_TRACE(expression);
+        EXPECT_THAT(eval(expression, environment), true);
+    }
+    for (const auto expression : {
+             "(= 1 1 2)", "(= 1 1.0)", "(= true 1)", "(= nil false)", "(= [1] [2])",
+             "(not= 1)", "(not= 1 1 1)" })
+    {
+        SCOPED_TRACE(expression);
+        EXPECT_THAT(eval(expression, environment), false);
+    }
+}
+
+TEST(evaluate, comparisons_reject_missing_or_nonnumeric_arguments)
+{
+    auto environment = edn::make_standard_environment();
+    for (const auto name : { "=", "not=", "<", "<=", ">", ">=" })
+    {
+        SCOPED_TRACE(name);
+        EXPECT_THAT(
+            [&]() { return eval(edn::str("(", name, ")"), environment); },
+            testing::ThrowsMessage<std::runtime_error>(testing::HasSubstr("requires at least one argument")));
+    }
+    for (const auto name : { "<", "<=", ">", ">=" })
+    {
+        for (const auto arguments : { "true", "1 nil", "2 1 :invalid" })
+        {
+            SCOPED_TRACE(edn::str(name, " ", arguments));
+            EXPECT_THAT(
+                [&]() { return eval(edn::str("(", name, " ", arguments, ")"), environment); },
+                testing::ThrowsMessage<std::runtime_error>(testing::HasSubstr("requires numeric arguments")));
+        }
+    }
+}
+
+TEST(evaluate, predicates_recognize_types_and_require_one_argument)
+{
+    auto environment = edn::make_standard_environment();
+    struct test_case_t
+    {
+        const char* name;
+        const char* matching;
+        const char* nonmatching;
+    };
+    for (const auto& test : {
+             test_case_t{ "nil?", "nil", "false" },
+             test_case_t{ "boolean?", "false", "nil" },
+             test_case_t{ "true?", "true", "1" },
+             test_case_t{ "false?", "false", "nil" },
+             test_case_t{ "number?", "1.5", "true" },
+             test_case_t{ "integer?", "1", "1.0" },
+             test_case_t{ "float?", "1.0", "1" },
+             test_case_t{ "char?", "\\a", "\"a\"" },
+             test_case_t{ "string?", "\"a\"", ":a" },
+             test_case_t{ "symbol?", "'a", ":a" },
+             test_case_t{ "keyword?", ":a", "'a" },
+             test_case_t{ "list?", "'(1)", "[1]" },
+             test_case_t{ "vector?", "[1]", "'(1)" },
+             test_case_t{ "set?", "#{1}", "[1]" },
+             test_case_t{ "map?", "{:a 1}", "[1]" },
+             test_case_t{ "fn?", "(fn [] nil)", "nil" },
+             test_case_t{ "coll?", "{}", "\"\"" },
+             test_case_t{ "sequential?", "[]", "#{}" },
+             test_case_t{ "not", "nil", "0" } })
+    {
+        SCOPED_TRACE(test.name);
+        EXPECT_THAT(eval(edn::str("(", test.name, " ", test.matching, ")"), environment), true);
+        EXPECT_THAT(eval(edn::str("(", test.name, " ", test.nonmatching, ")"), environment), false);
+        for (const auto arguments : { "", "nil nil" })
+        {
+            EXPECT_THAT(
+                [&]() { return eval(edn::str("(", test.name, " ", arguments, ")"), environment); },
+                testing::ThrowsMessage<std::runtime_error>(testing::HasSubstr("requires exactly one argument")));
+        }
+    }
+    EXPECT_THAT(eval("(number? 1)", environment), true);
+    EXPECT_THAT(eval("(fn? +)", environment), true);
+    EXPECT_THAT(eval("(coll? [])", environment), true);
+    EXPECT_THAT(eval("(coll? '())", environment), true);
+    EXPECT_THAT(eval("(coll? #{})", environment), true);
+    EXPECT_THAT(eval("(coll? nil)", environment), false);
+    EXPECT_THAT(eval("(sequential? '())", environment), true);
+    EXPECT_THAT(eval("(true? false)", environment), false);
+    EXPECT_THAT(eval("(false? true)", environment), false);
+}
+
+TEST(evaluate, only_nil_and_false_are_falsey_in_not_if_and_cond)
+{
+    auto environment = edn::make_standard_environment();
+    for (const auto value : { "nil", "false" })
+    {
+        SCOPED_TRACE(value);
+        EXPECT_THAT(eval(edn::str("(not ", value, ")"), environment), true);
+        EXPECT_THAT(eval(edn::str("(if ", value, " missing 2)"), environment), 2);
+        EXPECT_THAT(eval(edn::str("(cond ", value, " missing :else 2)"), environment), 2);
+    }
+    for (const auto value : { "true", "0", "0.0", "\"\"", "[]", "'()", "#{}", "{}", ":ready", "(fn [] nil)" })
+    {
+        SCOPED_TRACE(value);
+        EXPECT_THAT(eval(edn::str("(not ", value, ")"), environment), false);
+        EXPECT_THAT(eval(edn::str("(if ", value, " 1 missing)"), environment), 1);
+        EXPECT_THAT(eval(edn::str("(cond ", value, " 1 :else missing)"), environment), 1);
+    }
+}
+
+TEST(evaluate, and_or_return_operand_values_and_handle_empty_input)
+{
+    edn::stack_t stack;
+    EXPECT_THAT(eval("(and)", stack), true);
+    EXPECT_THAT(eval("(or)", stack), edn::nil);
+    EXPECT_THAT(eval("(and 42)", stack), 42);
+    EXPECT_THAT(eval("(or false)", stack), false);
+    EXPECT_THAT(eval("(and true 1 [2])", stack), edn::parse("[2]"));
+    EXPECT_THAT(eval("(and 1 nil missing)", stack), edn::nil);
+    EXPECT_THAT(eval("(and 1 false missing)", stack), false);
+    EXPECT_THAT(eval("(or nil false 0 missing)", stack), 0);
+    EXPECT_THAT(eval("(or nil false)", stack), false);
+    EXPECT_THAT(eval("(or false nil)", stack), edn::nil);
+    EXPECT_THAT(eval("(or [] missing)", stack), edn::parse("[]"));
+    EXPECT_THAT(eval("(and (or nil 1) 2)", stack), 2);
+}
+
+TEST(evaluate, and_or_evaluate_once_in_order_and_skip_side_effects)
+{
+    edn::stack_t stack;
+    int calls = 0;
+    stack.insert(
+        edn::symbol_t{ "tick" },
+        edn::callable_t{ [&calls](const std::vector<edn::value_t>&) -> edn::value_t { return ++calls; } });
+
+    EXPECT_THAT(eval("(and (tick) (tick) false (tick))", stack), false);
+    EXPECT_THAT(calls, 2);
+    EXPECT_THAT(eval("(or nil (tick) (tick))", stack), 3);
+    EXPECT_THAT(calls, 3);
+    EXPECT_THAT(eval("(and false (def skipped 1))", stack), false);
+    EXPECT_THAT(
+        [&]() { return eval("skipped", stack); },
+        testing::ThrowsMessage<std::runtime_error>(testing::HasSubstr("Unrecognized symbol")));
+    for (const auto expression : { "(and true missing)", "(or nil missing)" })
+    {
+        EXPECT_THAT(
+            [&]() { return eval(expression, stack); },
+            testing::ThrowsMessage<std::runtime_error>(testing::HasSubstr("Unrecognized symbol")));
+    }
+}
+
+TEST(evaluate, comparisons_and_predicates_work_as_first_class_functions)
+{
+    auto environment = edn::make_standard_environment();
+    EXPECT_THAT(eval("((partial < 1) 2 3)", environment), true);
+    EXPECT_THAT(eval("((comp not nil?) 42)", environment), true);
+    eval("(defn factorial [n] (if (<= n 1) 1 (* n (factorial (- n 1)))))", environment);
+    EXPECT_THAT(eval("(factorial 6)", environment), 720);
+}
+
 TEST(evaluate, non_executable_values_evaluate_to_themselves)
 {
     edn::stack_t stack{ nullptr };

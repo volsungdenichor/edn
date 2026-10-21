@@ -1316,7 +1316,7 @@ class parser_t
     {
         (void)open_delim;
         const location_t start_loc = m_stream.location();
-        m_stream.get();  // consume '('
+        m_stream.get();  // consume opening delimiter
 
         T result = {};
 
@@ -1382,7 +1382,6 @@ class parser_t
 
         if (next == '{')
         {
-            m_stream.get();  // consume '{'
             return parse_set();
         }
         else

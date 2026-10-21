@@ -216,6 +216,43 @@ It also provides the function combinators `partial` and `comp`:
 identity function. The rightmost function given to `comp` receives all the
 arguments; each function to its left receives the previous result.
 
+#### Comparisons, predicates, and logic
+
+The standard environment includes:
+
+- `=`, `not=`: compare values using the library's existing, type-sensitive
+  equality (including collection contents). For example, `(= 1 1.0)` is
+  `false`. `not=` negates equality of all arguments; it does not require
+  every pair to be different.
+- `<`, `<=`, `>`, `>=`: numeric comparisons, allowing mixed integers and
+  floating-point numbers. Multiple arguments compare adjacent pairs:
+  `(< 1 2 3)` is `true`.
+- Type predicates: `nil?`, `boolean?`, `true?`, `false?`, `number?`,
+  `integer?`, `float?`, `char?`, `string?`, `symbol?`, `keyword?`,
+  `list?`, `vector?`, `set?`, `map?`, and `fn?`.
+- `coll?` recognizes lists, vectors, sets, and maps; `sequential?`
+  recognizes lists and vectors.
+- `not` negates truthiness.
+
+Comparisons require at least one argument. A single-argument comparison
+returns `true`, except `not=`, which returns `false`. Predicates and `not`
+require exactly one argument. Invalid arities and nonnumeric arguments to
+ordered comparisons raise errors.
+
+Only `nil` and `false` are falsey; zero, empty strings, and empty collections
+are truthy. This applies consistently to `if`, `cond`, `not`, and the
+short-circuit special forms `and` and `or`. The special forms are available
+even without the standard environment:
+
+```clojure
+(and true 42)          ; => 42: returns the first falsey value or the last value
+(or nil false 0)       ; => 0: returns the first truthy value or the last value
+(and false missing)    ; => false: missing is never evaluated
+(or :ready missing)    ; => :ready
+(and)                  ; => true
+(or)                   ; => nil
+```
+
 #### Scopes and lifetime
 
 Scopes follow Clojure's rules, which keeps them free of reference cycles. Plain
