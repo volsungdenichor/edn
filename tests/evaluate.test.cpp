@@ -32,6 +32,52 @@ TEST(evaluate, value_evaluates_to_itself)
     EXPECT_THAT(edn::evaluate(3, stack), 3);
 }
 
+TEST(evaluate, thread_last_builds_collection_pipelines)
+{
+    auto environment = edn::make_standard_environment();
+    EXPECT_THAT(
+        eval(
+            "(->> [1 2 3 4] (mapv (partial * 10)) (filterv (fn [x] (> x 20))) (reduce + 0))",
+            environment),
+        70);
+    EXPECT_THAT(eval("(->> 10 (- 100) (/ 180))", environment), 2);
+    EXPECT_THAT(eval("(->> 42 vector (list :answer))", environment), edn::parse("(:answer [42])"));
+    EXPECT_THAT(eval("(->> 3 ((partial + 2)))", environment), 5);
+    EXPECT_THAT(eval("(let [x 4] (->> (->> x (+ 1)) (* 2)))", environment), 10);
+}
+
+TEST(evaluate, thread_last_expands_before_evaluation)
+{
+    edn::stack_t stack;
+    EXPECT_THAT(eval("(->> 42)", stack), 42);
+    EXPECT_THAT(eval("(->> nil)", stack), edn::nil);
+    EXPECT_THAT(eval("(->> missing (and false))", stack), false);
+    EXPECT_THAT(eval("(->> missing (or :ready))", stack), edn::keyword_t{ "ready" });
+    EXPECT_THAT(eval("(->> missing quote)", stack), edn::symbol_t{ "missing" });
+    EXPECT_THAT(eval("(->> '(unbound 1) ((fn [x] x)))", stack), edn::parse("(unbound 1)"));
+    EXPECT_THAT(
+        [&]() { return eval("(->>)", stack); },
+        testing::ThrowsMessage<std::runtime_error>(testing::HasSubstr("requires an initial expression")));
+    EXPECT_THAT(
+        [&]() { return eval("(->> 1 missing)", stack); },
+        testing::ThrowsMessage<std::runtime_error>(testing::HasSubstr("Unrecognized symbol")));
+}
+
+TEST(evaluate, thread_last_evaluates_each_expression_once_in_nested_call_order)
+{
+    auto environment = edn::make_standard_environment();
+    std::vector<edn::value_t> calls;
+    environment.insert(
+        edn::symbol_t{ "record" },
+        edn::callable_t{ [&calls](const std::vector<edn::value_t>& args) -> edn::value_t
+                         {
+                             calls.push_back(args.at(0));
+                             return args.at(0);
+                         } });
+    EXPECT_THAT(eval("(->> (record 1) (+ (record 2)) (* (record 3)))", environment), 9);
+    EXPECT_THAT(calls, testing::ElementsAre(edn::value_t{ 3 }, edn::value_t{ 2 }, edn::value_t{ 1 }));
+}
+
 TEST(evaluate, collection_constructors_create_empty_and_populated_collections)
 {
     auto environment = edn::make_standard_environment();

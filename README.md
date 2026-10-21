@@ -293,6 +293,32 @@ These are ordinary functions and can be used with `partial` and `comp`.
 Callback errors propagate to the caller. Lazy sequences, transducers, and
 early termination via Clojure's `reduced` are not supported.
 
+#### Thread-last pipelines
+
+`->>` inserts an expression as the last argument of each successive form.
+A bare function name is shorthand for a call with that expression as its
+only argument:
+
+```clojure
+(->> [1 2 3 4]
+     (mapv (partial * 10))
+     (filterv (fn [x] (> x 20)))
+     (reduce + 0))                         ; => 70
+
+(->> 42 vector)                            ; => [42]
+```
+
+For example, `(->> xs (mapv f) (filterv pred))` expands to
+`(filterv pred (mapv f xs))`. Expansion happens before evaluation, so
+special forms such as `and`, `or`, and `quote` retain their usual behavior.
+Evaluation order is that of the expanded nested calls, not a sequence of
+temporary assignments. With no threading steps, the initial expression is
+evaluated normally; omitting the initial expression raises an error.
+
+This built-in special form implements Clojure's thread-last macro behavior;
+it does not introduce a general user-defined macro system or lazy execution.
+It is available even without the standard environment.
+
 #### Scopes and lifetime
 
 Scopes follow Clojure's rules, which keeps them free of reference cycles. Plain

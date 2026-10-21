@@ -899,6 +899,30 @@ private:
 
     auto eval_quote(const std::vector<value_t>& input, stack_t&) const -> value_t { return input[0]; }
 
+    auto eval_thread_last(const std::vector<value_t>& input, stack_t& stack) const -> value_t
+    {
+        if (input.empty())
+        {
+            throw std::invalid_argument{ "`->>` requires an initial expression" };
+        }
+        value_t expression = input.front();
+        for (auto it = input.begin() + 1; it != input.end(); ++it)
+        {
+            list_t call;
+            if (const auto list = it->if_list())
+            {
+                call = *list;
+            }
+            else
+            {
+                call.push_back(*it);
+            }
+            call.push_back(std::move(expression));
+            expression = std::move(call);
+        }
+        return do_eval(expression, stack);
+    }
+
     auto eval_list(const list_t& input, stack_t& stack) const -> value_t
     {
         if (input.empty())
@@ -921,6 +945,7 @@ private:
             { symbol_t{ "do" }, &evaluate_fn::eval_do },        //
             { symbol_t{ "and" }, &evaluate_fn::eval_and },      //
             { symbol_t{ "or" }, &evaluate_fn::eval_or },        //
+            { symbol_t{ "->>" }, &evaluate_fn::eval_thread_last }, //
         };
 
         if (const auto h = head.if_symbol())
