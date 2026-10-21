@@ -32,6 +32,157 @@ TEST(evaluate, value_evaluates_to_itself)
     EXPECT_THAT(edn::evaluate(3, stack), 3);
 }
 
+TEST(evaluate, collection_constructors_create_empty_and_populated_collections)
+{
+    auto environment = edn::make_standard_environment();
+    struct test_case_t
+    {
+        const char* expression;
+        const char* expected;
+    };
+    for (const auto& test : {
+             test_case_t{ "(vector)", "[]" },
+             test_case_t{ "(list)", "()" },
+             test_case_t{ "(hash-map)", "{}" },
+             test_case_t{ "(hash-set)", "#{}" },
+             test_case_t{ "(vector 1 (+ 1 1) :a)", "[1 2 :a]" },
+             test_case_t{ "(list 1 (+ 1 1) :a)", "(1 2 :a)" },
+             test_case_t{ "(hash-set 3 1 3 2)", "#{1 2 3}" },
+             test_case_t{ "(hash-map :a 1 :b 2 :a 3)", "{:a 3 :b 2}" },
+             test_case_t{ "(vector (list 1) (hash-map :a (vector 2)))", "[(1) {:a [2]}]" },
+             test_case_t{ "((partial vector 1) 2)", "[1 2]" } })
+    {
+        SCOPED_TRACE(test.expression);
+        EXPECT_THAT(eval(test.expression, environment), edn::parse(test.expected));
+    }
+    for (const auto expression : { "(hash-map :a)", "(hash-map :a 1 :b)" })
+    {
+        EXPECT_THAT(
+            [&]() { return eval(expression, environment); },
+            testing::ThrowsMessage<std::runtime_error>(testing::HasSubstr("even number of arguments")));
+    }
+}
+
+TEST(evaluate, mapv_maps_lists_vectors_and_multiple_inputs)
+{
+    auto environment = edn::make_standard_environment();
+    EXPECT_THAT(eval("(mapv (partial + 1) [1 2 3])", environment), edn::parse("[2 3 4]"));
+    EXPECT_THAT(eval("(mapv (fn [x] (* x x)) '(1 2 3))", environment), edn::parse("[1 4 9]"));
+    EXPECT_THAT(eval("(mapv + [1 2 3] '(10 20))", environment), edn::parse("[11 22]"));
+    EXPECT_THAT(eval("(mapv vector [1 2] '(3 4) [5 6 7])", environment), edn::parse("[[1 3 5] [2 4 6]]"));
+    for (const auto expression : { "(mapv + [])", "(mapv + nil)", "(mapv + [1] nil)", "(mapv + [] [1])" })
+    {
+        EXPECT_THAT(eval(expression, environment), edn::parse("[]"));
+    }
+    EXPECT_THAT(eval("(mapv (fn [x] nil) [1 2])", environment), edn::parse("[nil nil]"));
+}
+
+TEST(evaluate, filterv_preserves_order_and_uses_clojure_truthiness)
+{
+    auto environment = edn::make_standard_environment();
+    EXPECT_THAT(eval("(filterv (fn [x] (> x 1)) '(3 1 2))", environment), edn::parse("[3 2]"));
+    EXPECT_THAT(eval("(filterv number? [1 :a 2.5 nil])", environment), edn::parse("[1 2.5]"));
+    EXPECT_THAT(eval("(filterv (fn [x] x) [nil false 0 [] :a])", environment), edn::parse("[0 [] :a]"));
+    EXPECT_THAT(eval("(filterv (fn [x] false) [1 2])", environment), edn::parse("[]"));
+    EXPECT_THAT(eval("(filterv (fn [x] 0) [1 2])", environment), edn::parse("[1 2]"));
+    EXPECT_THAT(eval("(filterv number? [])", environment), edn::parse("[]"));
+    EXPECT_THAT(eval("(filterv number? nil)", environment), edn::parse("[]"));
+}
+
+TEST(evaluate, reduce_supports_initial_values_and_left_to_right_accumulation)
+{
+    auto environment = edn::make_standard_environment();
+    EXPECT_THAT(eval("(reduce + [1 2 3])", environment), 6);
+    EXPECT_THAT(eval("(reduce + 10 '(1 2 3))", environment), 16);
+    EXPECT_THAT(eval("(reduce - [10 3 2])", environment), 5);
+    EXPECT_THAT(eval("(reduce - 10 [3 2])", environment), 5);
+    EXPECT_THAT(eval("(reduce vector nil [1 2])", environment), edn::parse("[[nil 1] 2]"));
+    EXPECT_THAT(eval("(reduce + [])", environment), 0);
+    EXPECT_THAT(eval("(reduce * nil)", environment), 1);
+    EXPECT_THAT(eval("(reduce + 42 [])", environment), 42);
+    EXPECT_THAT(eval("(reduce + :initial nil)", environment), edn::keyword_t{ "initial" });
+    EXPECT_THAT(eval("(reduce (fn [] :empty) [])", environment), edn::keyword_t{ "empty" });
+    EXPECT_THAT(eval("(reduce (fn [] :unused) [42])", environment), 42);
+    EXPECT_THAT(
+        [&]() { return eval("(reduce (fn [a b] a) [])", environment); },
+        testing::ThrowsMessage<std::runtime_error>(testing::HasSubstr("could not resolve function overload")));
+}
+
+TEST(evaluate, eager_sequence_functions_validate_arity_functions_and_inputs)
+{
+    auto environment = edn::make_standard_environment();
+    for (const auto expression : {
+             "(mapv)", "(mapv +)", "(filterv)", "(filterv +)", "(filterv + [] [])",
+             "(reduce)", "(reduce +)", "(reduce + 0 [] [])" })
+    {
+        SCOPED_TRACE(expression);
+        EXPECT_THAT(
+            [&]() { return eval(expression, environment); },
+            testing::ThrowsMessage<std::runtime_error>(testing::HasSubstr("requires")));
+    }
+    for (const auto expression : { "(mapv 1 [])", "(filterv 1 nil)", "(reduce 1 0 [])" })
+    {
+        SCOPED_TRACE(expression);
+        EXPECT_THAT(
+            [&]() { return eval(expression, environment); },
+            testing::ThrowsMessage<std::runtime_error>(testing::HasSubstr("requires callable arguments")));
+    }
+    for (const auto expression : {
+             "(mapv + 1)", "(mapv + [] {})", "(filterv number? #{1})", "(filterv number? \"abc\")",
+             "(reduce + :a)", "(reduce + 0 {})" })
+    {
+        SCOPED_TRACE(expression);
+        EXPECT_THAT(
+            [&]() { return eval(expression, environment); },
+            testing::ThrowsMessage<std::runtime_error>(testing::HasSubstr("requires a list, vector, or nil")));
+    }
+    for (const auto expression : {
+             "(mapv (fn [x] missing) [1])", "(filterv (fn [x] missing) [1])",
+             "(reduce (fn [a b] missing) [1 2])" })
+    {
+        EXPECT_THAT(
+            [&]() { return eval(expression, environment); },
+            testing::ThrowsMessage<std::runtime_error>(testing::HasSubstr("Unrecognized symbol")));
+    }
+}
+
+TEST(evaluate, sequence_callbacks_are_eager_and_invoked_once_in_order)
+{
+    auto environment = edn::make_standard_environment();
+    std::vector<edn::value_t> calls;
+    environment.insert(
+        edn::symbol_t{ "record" },
+        edn::callable_t{ [&calls](const std::vector<edn::value_t>& args) -> edn::value_t
+                         {
+                             calls.push_back(args.at(0));
+                             return args.at(0);
+                         } });
+    EXPECT_THAT(eval("(mapv record [3 1 2])", environment), edn::parse("[3 1 2]"));
+    EXPECT_THAT(calls, testing::ElementsAre(edn::value_t{ 3 }, edn::value_t{ 1 }, edn::value_t{ 2 }));
+    calls.clear();
+    EXPECT_THAT(eval("(filterv record [nil 0 false])", environment), edn::parse("[0]"));
+    EXPECT_THAT(calls, testing::ElementsAre(edn::value_t{ edn::nil }, edn::value_t{ 0 }, edn::value_t{ false }));
+    calls.clear();
+    eval("(mapv record nil)", environment);
+    eval("(filterv record [])", environment);
+    eval("(reduce record 1 [])", environment);
+    EXPECT_TRUE(calls.empty());
+}
+
+TEST(scope_lifetime, eager_results_keep_closures_alive_without_retaining_temporary_scopes)
+{
+    auto environment = edn::make_standard_environment();
+    const auto token = insert_token(environment);
+    {
+        auto result = eval("(mapv (fn [t] (fn [] (t))) (vector token))", environment);
+        ASSERT_NE(result.if_vector(), nullptr);
+        ASSERT_EQ(result.if_vector()->size(), 1u);
+        EXPECT_THAT((*result.if_vector()->front().if_callable())({}), 42);
+        EXPECT_GT(token.use_count(), 1);
+    }
+    EXPECT_THAT(token.use_count(), 1);
+}
+
 TEST(evaluate, numeric_comparisons_check_every_adjacent_pair)
 {
     auto environment = edn::make_standard_environment();

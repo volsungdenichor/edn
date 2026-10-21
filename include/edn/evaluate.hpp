@@ -267,6 +267,133 @@ static const callable_t& as_callable(const value_t& value, std::string_view name
     throw std::invalid_argument{ str("`", name, "` requires callable arguments, got ", value) };
 }
 
+struct collection_constructor_t
+{
+    value_type_t type;
+
+    value_t operator()(const std::vector<value_t>& args) const
+    {
+        switch (type)
+        {
+            case value_type_t::vector: return vector_t{ args.begin(), args.end() };
+            case value_type_t::list: return list_t{ args.begin(), args.end() };
+            case value_type_t::set: return set_t{ args.begin(), args.end() };
+            case value_type_t::map:
+            {
+                if (args.size() % 2 != 0)
+                {
+                    throw std::invalid_argument{ "`hash-map` requires an even number of arguments" };
+                }
+                map_t result;
+                for (std::size_t i = 0; i < args.size(); i += 2)
+                {
+                    result[args.at(i)] = args.at(i + 1);
+                }
+                return result;
+            }
+            default: throw std::logic_error{ "unknown collection constructor" };
+        }
+    }
+};
+
+inline const std::vector<value_t>& as_sequence(const value_t& value, std::string_view name)
+{
+    if (const auto vector = value.if_vector())
+    {
+        return *vector;
+    }
+    if (const auto list = value.if_list())
+    {
+        return *list;
+    }
+    if (value.is_nil())
+    {
+        static const std::vector<value_t> empty;
+        return empty;
+    }
+    throw std::invalid_argument{ str("`", name, "` requires a list, vector, or nil") };
+}
+
+struct mapv_t
+{
+    value_t operator()(const std::vector<value_t>& args) const
+    {
+        if (args.size() < 2)
+        {
+            throw std::invalid_argument{ "`mapv` requires a function and at least one collection" };
+        }
+        const auto& function = as_callable(args.front(), "mapv");
+        std::vector<const std::vector<value_t>*> inputs;
+        std::size_t size = std::numeric_limits<std::size_t>::max();
+        for (auto it = args.begin() + 1; it != args.end(); ++it)
+        {
+            const auto& input = as_sequence(*it, "mapv");
+            inputs.push_back(&input);
+            size = std::min(size, input.size());
+        }
+        vector_t result;
+        result.reserve(size);
+        std::vector<value_t> parameters;
+        parameters.reserve(inputs.size());
+        for (std::size_t i = 0; i < size; ++i)
+        {
+            parameters.clear();
+            for (const auto input : inputs)
+            {
+                parameters.push_back(input->at(i));
+            }
+            result.push_back(function(parameters));
+        }
+        return result;
+    }
+};
+
+struct filterv_t
+{
+    value_t operator()(const std::vector<value_t>& args) const
+    {
+        if (args.size() != 2)
+        {
+            throw std::invalid_argument{ "`filterv` requires a predicate and one collection" };
+        }
+        const auto& predicate = as_callable(args.front(), "filterv");
+        const auto& input = as_sequence(args.at(1), "filterv");
+        vector_t result;
+        for (const auto& value : input)
+        {
+            if (is_truthy(predicate({ value })))
+            {
+                result.push_back(value);
+            }
+        }
+        return result;
+    }
+};
+
+struct reduce_t
+{
+    value_t operator()(const std::vector<value_t>& args) const
+    {
+        if (args.size() != 2 && args.size() != 3)
+        {
+            throw std::invalid_argument{ "`reduce` requires a function, an optional initial value, and one collection" };
+        }
+        const auto& function = as_callable(args.front(), "reduce");
+        const auto& input = as_sequence(args.back(), "reduce");
+        const bool has_initial = args.size() == 3;
+        if (!has_initial && input.empty())
+        {
+            return function({});
+        }
+        value_t result = has_initial ? args.at(1) : input.front();
+        for (std::size_t i = has_initial ? 0 : 1; i < input.size(); ++i)
+        {
+            result = function({ result, input.at(i) });
+        }
+        return result;
+    }
+};
+
 struct partial_t
 {
     struct impl_t
@@ -465,6 +592,17 @@ inline auto make_standard_environment() -> stack_t
         callable_t{ evaluate_detail::arithmetic_t{ evaluate_detail::arithmetic_operator_t::division, "/" } });
     environment.insert(symbol_t{ "partial" }, callable_t{ evaluate_detail::partial_t{} });
     environment.insert(symbol_t{ "comp" }, callable_t{ evaluate_detail::comp_t{} });
+    for (const auto& [name, type] : {
+             std::pair{ "vector", value_type_t::vector },
+             std::pair{ "list", value_type_t::list },
+             std::pair{ "hash-map", value_type_t::map },
+             std::pair{ "hash-set", value_type_t::set } })
+    {
+        environment.insert(symbol_t{ name }, callable_t{ evaluate_detail::collection_constructor_t{ type } });
+    }
+    environment.insert(symbol_t{ "mapv" }, callable_t{ evaluate_detail::mapv_t{} });
+    environment.insert(symbol_t{ "filterv" }, callable_t{ evaluate_detail::filterv_t{} });
+    environment.insert(symbol_t{ "reduce" }, callable_t{ evaluate_detail::reduce_t{} });
     using comparison = evaluate_detail::comparison_operator_t;
     for (const auto& [name, operation] : {
              std::pair{ "=", comparison::equal },

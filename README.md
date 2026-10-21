@@ -253,6 +253,46 @@ even without the standard environment:
 (or)                   ; => nil
 ```
 
+#### Collection constructors and eager processing
+
+The standard environment provides `vector`, `list`, `hash-map`, and
+`hash-set`. Each accepts zero arguments to construct an empty collection.
+Arguments are evaluated normally; lists preserve argument order, and sets
+remove duplicates using the library's existing set semantics. `hash-map`
+requires alternating keys and values (an even number of arguments).
+Repeated keys keep their original position but use the last supplied value.
+Despite their Clojure names, `hash-map` and `hash-set` construct the library's
+existing map and set types, not new hash-based storage types.
+
+```clojure
+(vector 1 (+ 1 1))             ; => [1 2]
+(list :a :b)                  ; => (:a :b)
+(hash-map :a 1 :a 2)           ; => {:a 2}
+(hash-set 1 2 1)               ; => #{1 2}
+(mapv (partial + 1) '(1 2 3)) ; => [2 3 4]
+(mapv + [1 2 3] [10 20])      ; => [11 22]
+(filterv number? [1 :a 2])     ; => [1 2]
+(reduce + 10 [1 2 3])         ; => 16
+```
+
+`mapv`, `filterv`, and `reduce` accept lists, vectors, or `nil` (an empty
+input). Other input types raise an error.
+
+- `(mapv f coll ...)` eagerly returns a vector, calling `f` with one element
+  from each input, in order. It stops at the shortest input and requires at
+  least one input collection.
+- `(filterv pred coll)` eagerly returns a vector of elements whose predicate
+  result is truthy, preserving order.
+- `(reduce f coll)` folds left using the first element as the initial
+  accumulator. For an empty input it calls `f` with no arguments; for a
+  singleton input it returns that element without calling `f`.
+- `(reduce f initial coll)` folds left starting with `initial`, returning it
+  unchanged for an empty input.
+
+These are ordinary functions and can be used with `partial` and `comp`.
+Callback errors propagate to the caller. Lazy sequences, transducers, and
+early termination via Clojure's `reduced` are not supported.
+
 #### Scopes and lifetime
 
 Scopes follow Clojure's rules, which keeps them free of reference cycles. Plain
