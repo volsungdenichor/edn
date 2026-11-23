@@ -1,6 +1,6 @@
 #include <gmock/gmock.h>
 
-#include <edn/evaluate.hpp>
+#include <edn/edn.hpp>
 #include <memory>
 #include <stdexcept>
 #include <string_view>
@@ -35,11 +35,7 @@ TEST(evaluate, value_evaluates_to_itself)
 TEST(evaluate, thread_last_builds_collection_pipelines)
 {
     auto environment = edn::make_standard_environment();
-    EXPECT_THAT(
-        eval(
-            "(->> [1 2 3 4] (mapv (partial * 10)) (filterv (fn [x] (> x 20))) (reduce + 0))",
-            environment),
-        70);
+    EXPECT_THAT(eval("(->> [1 2 3 4] (mapv (partial * 10)) (filterv (fn [x] (> x 20))) (reduce + 0))", environment), 70);
     EXPECT_THAT(eval("(->> 10 (- 100) (/ 180))", environment), 2);
     EXPECT_THAT(eval("(->> 42 vector (list :answer))", environment), edn::parse("(:answer [42])"));
     EXPECT_THAT(eval("(->> 3 ((partial + 2)))", environment), 5);
@@ -86,17 +82,16 @@ TEST(evaluate, collection_constructors_create_empty_and_populated_collections)
         const char* expression;
         const char* expected;
     };
-    for (const auto& test : {
-             test_case_t{ "(vector)", "[]" },
-             test_case_t{ "(list)", "()" },
-             test_case_t{ "(hash-map)", "{}" },
-             test_case_t{ "(hash-set)", "#{}" },
-             test_case_t{ "(vector 1 (+ 1 1) :a)", "[1 2 :a]" },
-             test_case_t{ "(list 1 (+ 1 1) :a)", "(1 2 :a)" },
-             test_case_t{ "(hash-set 3 1 3 2)", "#{1 2 3}" },
-             test_case_t{ "(hash-map :a 1 :b 2 :a 3)", "{:a 3 :b 2}" },
-             test_case_t{ "(vector (list 1) (hash-map :a (vector 2)))", "[(1) {:a [2]}]" },
-             test_case_t{ "((partial vector 1) 2)", "[1 2]" } })
+    for (const auto& test : { test_case_t{ "(vector)", "[]" },
+                              test_case_t{ "(list)", "()" },
+                              test_case_t{ "(hash-map)", "{}" },
+                              test_case_t{ "(hash-set)", "#{}" },
+                              test_case_t{ "(vector 1 (+ 1 1) :a)", "[1 2 :a]" },
+                              test_case_t{ "(list 1 (+ 1 1) :a)", "(1 2 :a)" },
+                              test_case_t{ "(hash-set 3 1 3 2)", "#{1 2 3}" },
+                              test_case_t{ "(hash-map :a 1 :b 2 :a 3)", "{:a 3 :b 2}" },
+                              test_case_t{ "(vector (list 1) (hash-map :a (vector 2)))", "[(1) {:a [2]}]" },
+                              test_case_t{ "((partial vector 1) 2)", "[1 2]" } })
     {
         SCOPED_TRACE(test.expression);
         EXPECT_THAT(eval(test.expression, environment), edn::parse(test.expected));
@@ -157,9 +152,14 @@ TEST(evaluate, reduce_supports_initial_values_and_left_to_right_accumulation)
 TEST(evaluate, eager_sequence_functions_validate_arity_functions_and_inputs)
 {
     auto environment = edn::make_standard_environment();
-    for (const auto expression : {
-             "(mapv)", "(mapv +)", "(filterv)", "(filterv +)", "(filterv + [] [])",
-             "(reduce)", "(reduce +)", "(reduce + 0 [] [])" })
+    for (const auto expression : { "(mapv)",
+                                   "(mapv +)",
+                                   "(filterv)",
+                                   "(filterv +)",
+                                   "(filterv + [] [])",
+                                   "(reduce)",
+                                   "(reduce +)",
+                                   "(reduce + 0 [] [])" })
     {
         SCOPED_TRACE(expression);
         EXPECT_THAT(
@@ -173,18 +173,20 @@ TEST(evaluate, eager_sequence_functions_validate_arity_functions_and_inputs)
             [&]() { return eval(expression, environment); },
             testing::ThrowsMessage<std::runtime_error>(testing::HasSubstr("requires callable arguments")));
     }
-    for (const auto expression : {
-             "(mapv + 1)", "(mapv + [] {})", "(filterv number? #{1})", "(filterv number? \"abc\")",
-             "(reduce + :a)", "(reduce + 0 {})" })
+    for (const auto expression : { "(mapv + 1)",
+                                   "(mapv + [] {})",
+                                   "(filterv number? #{1})",
+                                   "(filterv number? \"abc\")",
+                                   "(reduce + :a)",
+                                   "(reduce + 0 {})" })
     {
         SCOPED_TRACE(expression);
         EXPECT_THAT(
             [&]() { return eval(expression, environment); },
             testing::ThrowsMessage<std::runtime_error>(testing::HasSubstr("requires a list, vector, or nil")));
     }
-    for (const auto expression : {
-             "(mapv (fn [x] missing) [1])", "(filterv (fn [x] missing) [1])",
-             "(reduce (fn [a b] missing) [1 2])" })
+    for (const auto expression :
+         { "(mapv (fn [x] missing) [1])", "(filterv (fn [x] missing) [1])", "(reduce (fn [a b] missing) [1 2])" })
     {
         EXPECT_THAT(
             [&]() { return eval(expression, environment); },
@@ -224,7 +226,7 @@ TEST(scope_lifetime, eager_results_keep_closures_alive_without_retaining_tempora
         ASSERT_NE(result.if_vector(), nullptr);
         ASSERT_EQ(result.if_vector()->size(), 1u);
         EXPECT_THAT((*result.if_vector()->front().if_callable())({}), 42);
-        EXPECT_GT(token.use_count(), 1);
+        EXPECT_THAT(token.use_count(), testing::Gt(1));
     }
     EXPECT_THAT(token.use_count(), 1);
 }
@@ -232,16 +234,21 @@ TEST(scope_lifetime, eager_results_keep_closures_alive_without_retaining_tempora
 TEST(evaluate, numeric_comparisons_check_every_adjacent_pair)
 {
     auto environment = edn::make_standard_environment();
-    for (const auto expression : {
-             "(< 1 2 3)", "(<= 1 1.0 2)", "(> 3 2.5 1)", "(>= 3 3.0 1)",
-             "(< -2147483648 2147483647)", "(< 2147483647 2147483648.0)",
-             "(< 1)", "(<= 1)", "(> 1)", "(>= 1)" })
+    for (const auto expression : { "(< 1 2 3)",
+                                   "(<= 1 1.0 2)",
+                                   "(> 3 2.5 1)",
+                                   "(>= 3 3.0 1)",
+                                   "(< -2147483648 2147483647)",
+                                   "(< 2147483647 2147483648.0)",
+                                   "(< 1)",
+                                   "(<= 1)",
+                                   "(> 1)",
+                                   "(>= 1)" })
     {
         SCOPED_TRACE(expression);
         EXPECT_THAT(eval(expression, environment), true);
     }
-    for (const auto expression : {
-             "(< 1 3 2)", "(< 1 1.0)", "(<= 2 1)", "(> 3 1 2)", "(> 1 1.0)", "(>= 1 2)" })
+    for (const auto expression : { "(< 1 3 2)", "(< 1 1.0)", "(<= 2 1)", "(> 3 1 2)", "(> 1 1.0)", "(>= 1 2)" })
     {
         SCOPED_TRACE(expression);
         EXPECT_THAT(eval(expression, environment), false);
@@ -251,16 +258,20 @@ TEST(evaluate, numeric_comparisons_check_every_adjacent_pair)
 TEST(evaluate, equality_uses_existing_value_equality_and_not_equal_negates_it)
 {
     auto environment = edn::make_standard_environment();
-    for (const auto expression : {
-             "(= 1)", "(= nil nil)", "(= 1 1 1)", "(= [1 {:a 2}] [1 {:a 2}])",
-             "(= 'x 'x)", "(not= 1 1 2)", "(not= 1 1.0)", "(not= true 1)" })
+    for (const auto expression : { "(= 1)",
+                                   "(= nil nil)",
+                                   "(= 1 1 1)",
+                                   "(= [1 {:a 2}] [1 {:a 2}])",
+                                   "(= 'x 'x)",
+                                   "(not= 1 1 2)",
+                                   "(not= 1 1.0)",
+                                   "(not= true 1)" })
     {
         SCOPED_TRACE(expression);
         EXPECT_THAT(eval(expression, environment), true);
     }
-    for (const auto expression : {
-             "(= 1 1 2)", "(= 1 1.0)", "(= true 1)", "(= nil false)", "(= [1] [2])",
-             "(not= 1)", "(not= 1 1 1)" })
+    for (const auto expression :
+         { "(= 1 1 2)", "(= 1 1.0)", "(= true 1)", "(= nil false)", "(= [1] [2])", "(not= 1)", "(not= 1 1 1)" })
     {
         SCOPED_TRACE(expression);
         EXPECT_THAT(eval(expression, environment), false);
@@ -298,26 +309,25 @@ TEST(evaluate, predicates_recognize_types_and_require_one_argument)
         const char* matching;
         const char* nonmatching;
     };
-    for (const auto& test : {
-             test_case_t{ "nil?", "nil", "false" },
-             test_case_t{ "boolean?", "false", "nil" },
-             test_case_t{ "true?", "true", "1" },
-             test_case_t{ "false?", "false", "nil" },
-             test_case_t{ "number?", "1.5", "true" },
-             test_case_t{ "integer?", "1", "1.0" },
-             test_case_t{ "float?", "1.0", "1" },
-             test_case_t{ "char?", "\\a", "\"a\"" },
-             test_case_t{ "string?", "\"a\"", ":a" },
-             test_case_t{ "symbol?", "'a", ":a" },
-             test_case_t{ "keyword?", ":a", "'a" },
-             test_case_t{ "list?", "'(1)", "[1]" },
-             test_case_t{ "vector?", "[1]", "'(1)" },
-             test_case_t{ "set?", "#{1}", "[1]" },
-             test_case_t{ "map?", "{:a 1}", "[1]" },
-             test_case_t{ "fn?", "(fn [] nil)", "nil" },
-             test_case_t{ "coll?", "{}", "\"\"" },
-             test_case_t{ "sequential?", "[]", "#{}" },
-             test_case_t{ "not", "nil", "0" } })
+    for (const auto& test : { test_case_t{ "nil?", "nil", "false" },
+                              test_case_t{ "boolean?", "false", "nil" },
+                              test_case_t{ "true?", "true", "1" },
+                              test_case_t{ "false?", "false", "nil" },
+                              test_case_t{ "number?", "1.5", "true" },
+                              test_case_t{ "integer?", "1", "1.0" },
+                              test_case_t{ "float?", "1.0", "1" },
+                              test_case_t{ "char?", "\\a", "\"a\"" },
+                              test_case_t{ "string?", "\"a\"", ":a" },
+                              test_case_t{ "symbol?", "'a", ":a" },
+                              test_case_t{ "keyword?", ":a", "'a" },
+                              test_case_t{ "list?", "'(1)", "[1]" },
+                              test_case_t{ "vector?", "[1]", "'(1)" },
+                              test_case_t{ "set?", "#{1}", "[1]" },
+                              test_case_t{ "map?", "{:a 1}", "[1]" },
+                              test_case_t{ "fn?", "(fn [] nil)", "nil" },
+                              test_case_t{ "coll?", "{}", "\"\"" },
+                              test_case_t{ "sequential?", "[]", "#{}" },
+                              test_case_t{ "not", "nil", "0" } })
     {
         SCOPED_TRACE(test.name);
         EXPECT_THAT(eval(edn::str("(", test.name, " ", test.matching, ")"), environment), true);

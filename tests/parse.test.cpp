@@ -35,26 +35,18 @@ TEST(parse, set_preserves_first_element_without_leading_whitespace)
     EXPECT_THAT(edn::parse("#{-123}"), IsSet(testing::ElementsAre(IsInteger(-123))));
     EXPECT_THAT(edn::parse("#{true}"), IsSet(testing::ElementsAre(IsBoolean(true))));
     EXPECT_THAT(edn::parse(R"(#{"text"})"), IsSet(testing::ElementsAre(IsString(testing::StrEq("text")))));
-    EXPECT_THAT(
-        edn::parse("#{1 2 1}"),
-        IsSet(testing::UnorderedElementsAre(IsInteger(1), IsInteger(2))));
-    EXPECT_THAT(
-        edn::parse("#{ 1 2 }"),
-        IsSet(testing::UnorderedElementsAre(IsInteger(1), IsInteger(2))));
+    EXPECT_THAT(edn::parse("#{1 2 1}"), IsSet(testing::UnorderedElementsAre(IsInteger(1), IsInteger(2))));
+    EXPECT_THAT(edn::parse("#{ 1 2 }"), IsSet(testing::UnorderedElementsAre(IsInteger(1), IsInteger(2))));
 }
 
 TEST(parse, nested_sets_and_following_collection_elements)
 {
-    EXPECT_THAT(
-        edn::parse("#{#{}}"),
-        IsSet(testing::ElementsAre(IsSet(testing::IsEmpty()))));
-    EXPECT_THAT(
-        edn::parse("#{[1]}"),
-        IsSet(testing::ElementsAre(IsVector(testing::ElementsAre(IsInteger(1))))));
+    EXPECT_THAT(edn::parse("#{#{}}"), IsSet(testing::ElementsAre(IsSet(testing::IsEmpty()))));
+    EXPECT_THAT(edn::parse("#{[1]}"), IsSet(testing::ElementsAre(IsVector(testing::ElementsAre(IsInteger(1))))));
     EXPECT_THAT(
         edn::parse("[#{} #{123} 4]"),
-        IsVector(testing::ElementsAre(
-            IsSet(testing::IsEmpty()), IsSet(testing::ElementsAre(IsInteger(123))), IsInteger(4))));
+        IsVector(
+            testing::ElementsAre(IsSet(testing::IsEmpty()), IsSet(testing::ElementsAre(IsInteger(123))), IsInteger(4))));
 }
 
 TEST(parse, set_requires_a_closing_delimiter)
