@@ -13,34 +13,59 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - name: Ubuntu GCC
-            os: ubuntu-latest
-            cc: gcc
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        build_type: [Debug, Release]
+        compiler:
+          - cc: gcc
             cxx: g++
-          - name: Ubuntu Clang
-            os: ubuntu-latest
-            cc: clang
+          - cc: clang
             cxx: clang++
-          - name: Windows MSVC
-            os: windows-latest
+        exclude:
+          - os: windows-latest
+            compiler:
+              cc: gcc
+              cxx: g++
+          - os: windows-latest
+            compiler:
+              cc: clang
+              cxx: clang++
+          - os: macos-latest
+            compiler:
+              cc: gcc
+              cxx: g++
+        include:
+          - os: windows-latest
+            build_type: Debug
+            compiler:
+              cc: cl
+              cxx: cl
+          - os: windows-latest
+            build_type: Release
+            compiler:
+              cc: cl
+              cxx: cl
 
     runs-on: ${{ matrix.os }}
-    name: ${{ matrix.name }}
+    name: ${{ matrix.os }} ${{ matrix.compiler.cxx }} ${{ matrix.build_type }}
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Configure CMake (Linux)
-        if: runner.os != 'Windows'
-        run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=${{ matrix.cc }} -DCMAKE_CXX_COMPILER=${{ matrix.cxx }}
-
-      - name: Configure CMake (Windows)
+      - name: Set up MSVC (Windows)
         if: runner.os == 'Windows'
-        run: cmake -B build -DCMAKE_BUILD_TYPE=Release
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Set up compiler (Linux/macOS)
+        if: runner.os != 'Windows'
+        run: |
+          echo "CC=${{ matrix.compiler.cc }}" >> $GITHUB_ENV
+          echo "CXX=${{ matrix.compiler.cxx }}" >> $GITHUB_ENV
+
+      - name: Configure CMake
+        run: cmake -B build -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
 
       - name: Build
-        run: cmake --build build --config Release
+        run: cmake --build build --config ${{ matrix.build_type }}
 
       - name: Run tests
-        run: ctest --test-dir build -C Release --output-on-failure
+        run: ctest --test-dir build -C ${{ matrix.build_type }} --output-on-failure
