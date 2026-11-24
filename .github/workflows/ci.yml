@@ -16,14 +16,12 @@ jobs:
         include:
           - name: Ubuntu GCC
             os: ubuntu-latest
-            cc: gcc-11
-            cxx: g++-11
-            install: sudo apt-get update && sudo apt-get install -y gcc-11 g++-11
+            cc: gcc
+            cxx: g++
           - name: Ubuntu Clang
             os: ubuntu-latest
-            cc: clang-14
-            cxx: clang++-14
-            install: sudo apt-get update && sudo apt-get install -y clang-14
+            cc: clang
+            cxx: clang++
           - name: Windows MSVC
             os: windows-latest
 
@@ -32,10 +30,6 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-
-      - name: Install compiler
-        if: matrix.install
-        run: ${{ matrix.install }}
 
       - name: Configure CMake (Linux)
         if: runner.os != 'Windows'
